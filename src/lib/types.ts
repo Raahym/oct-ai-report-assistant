@@ -1,4 +1,5 @@
 export type Role = "admin" | "doctor" | "assistant";
+export type RequestedRole = Role;
 export type Gender = "Female" | "Male" | "Other";
 export type EyeSide = "Left" | "Right" | "Both" | "Unknown";
 export type DiseaseClass = "CNV" | "DME" | "DRUSEN" | "NORMAL";

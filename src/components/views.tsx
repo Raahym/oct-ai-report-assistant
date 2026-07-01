@@ -7,7 +7,6 @@ import type { ReactNode } from "react";
 import {
   CheckCircle2,
   Download,
-  Eye,
   FileText,
   Loader2,
   Plus,
@@ -23,7 +22,7 @@ import { predictOCT } from "@/lib/ai-api";
 import { useDemoStore } from "@/lib/demo-store";
 import { downloadReportPdf } from "@/lib/pdf";
 import { reportTemplates } from "@/lib/report-templates";
-import type { DiseaseClass, EyeSide, Gender, Patient, Report } from "@/lib/types";
+import type { DiseaseClass, EyeSide, Gender, Patient, Report, Role } from "@/lib/types";
 
 const diseaseClasses: DiseaseClass[] = ["CNV", "DME", "DRUSEN", "NORMAL"];
 
@@ -31,10 +30,12 @@ export function LoginView() {
   const router = useRouter();
   const store = useDemoStore();
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
-  const [email, setEmail] = useState("doctor@octai.local");
-  const [password, setPassword] = useState("demo-password");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [clinicName, setClinicName] = useState("OCT AI Clinic");
+  const [requestedRole, setRequestedRole] = useState<Role>("doctor");
+  const [department, setDepartment] = useState("");
+  const [doctorId, setDoctorId] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -49,7 +50,9 @@ export function LoginView() {
           email,
           password,
           fullName: fullName || email.split("@")[0],
-          clinicName
+          role: requestedRole,
+          department,
+          doctorId
         });
       } else {
         await store.login(email, password);
@@ -71,22 +74,15 @@ export function LoginView() {
     <main className="grid min-h-screen bg-slate-50 lg:grid-cols-[1fr_520px]">
       <section className="hidden bg-[linear-gradient(135deg,#0f6170,#2563eb)] px-14 py-16 text-white lg:flex lg:flex-col lg:justify-between">
         <div>
-          <div className="mb-10 flex h-12 w-12 items-center justify-center rounded-md bg-white/15">
-            <Eye size={26} />
-          </div>
-          <h1 className="max-w-xl text-4xl font-black leading-tight">
-            AI-assisted OCT report workflow for clinical review.
-          </h1>
+          <p className="mb-8 text-sm font-bold uppercase tracking-[0.18em] text-white/70">OCT Report Assistant</p>
+          <h1 className="max-w-xl text-4xl font-black leading-tight">Clinical OCT reporting workspace.</h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-white/82">
-            Create patients, upload OCT images, run demo AI analysis, edit standardized reports, and approve only after doctor review.
+            Manage patient records, OCT scan analysis, report drafts, and clinician approval in one controlled workflow.
           </p>
         </div>
-        <div className="grid grid-cols-3 gap-3 text-sm">
-          {["CNV", "DME", "DRUSEN", "NORMAL"].map((item) => (
-            <div key={item} className="rounded-lg bg-white/10 p-4 backdrop-blur">
-              <p className="text-2xl font-black">{item}</p>
-              <p className="text-white/70">classification template</p>
-            </div>
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          {["Patient records", "OCT analysis", "Doctor review", "Approved reports"].map((item) => (
+            <div key={item} className="rounded-lg border border-white/14 bg-white/10 p-4 font-bold backdrop-blur">{item}</div>
           ))}
         </div>
       </section>
@@ -95,7 +91,11 @@ export function LoginView() {
           <div className="mb-6">
             <p className="text-xs font-bold uppercase tracking-wide text-clinic-700">Secure clinical workspace</p>
             <h2 className="mt-2 text-2xl font-black text-slate-950">{authMode === "signin" ? "Sign in" : "Create account"}</h2>
-            <p className="mt-1 text-sm text-slate-500">Use demo credentials for local testing, or use a real confirmed Supabase email account.</p>
+            <p className="mt-1 text-sm text-slate-500">
+              {authMode === "signin"
+                ? "Use your approved clinical account."
+                : "Request access for your role. Accounts require email verification and administrator approval."}
+            </p>
           </div>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-2 rounded-md bg-slate-100 p-1">
@@ -109,10 +109,6 @@ export function LoginView() {
                 className={`rounded px-3 py-2 text-sm font-bold ${authMode === "signup" ? "bg-white text-clinic-700 shadow-sm" : "text-slate-500"}`}
                 onClick={() => {
                   setAuthMode("signup");
-                  if (email.endsWith(".local")) {
-                    setEmail("");
-                    setPassword("");
-                  }
                 }}
               >
                 Create account
@@ -138,8 +134,25 @@ export function LoginView() {
                   <input className="field mt-1" value={fullName} onChange={(event) => setFullName(event.target.value)} />
                 </div>
                 <div>
-                  <label className="label">Clinic name</label>
-                  <input className="field mt-1" value={clinicName} onChange={(event) => setClinicName(event.target.value)} />
+                  <label className="label">Role requested</label>
+                  <select className="field mt-1" value={requestedRole} onChange={(event) => setRequestedRole(event.target.value as Role)}>
+                    <option value="doctor">Doctor</option>
+                    <option value="assistant">Assistant / Technician</option>
+                    <option value="admin">Admin / Records Staff</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Hospital / department</label>
+                  <input className="field mt-1" value={department} onChange={(event) => setDepartment(event.target.value)} />
+                </div>
+                {requestedRole === "doctor" ? (
+                  <div>
+                    <label className="label">PMDC / doctor ID optional</label>
+                    <input className="field mt-1" value={doctorId} onChange={(event) => setDoctorId(event.target.value)} />
+                  </div>
+                ) : null}
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+                  New accounts remain pending until approved by the clinical administrator.
                 </div>
               </>
             ) : null}
@@ -147,22 +160,12 @@ export function LoginView() {
             {message ? <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">{message}</p> : null}
             <Button className="w-full" onClick={submit} disabled={loading || !email || !password}>
               {loading ? <Loader2 className="animate-spin" size={16} /> : null}
-              {authMode === "signin" ? "Login" : "Create Supabase Account"}
+              {authMode === "signin" ? "Sign in" : "Request access"}
             </Button>
             <div className="flex justify-between text-sm">
               <Link href="/forgot-password" className="font-semibold text-clinic-700">
                 Forgot password?
               </Link>
-              <button
-                className="font-semibold text-slate-500"
-                onClick={() => {
-                  setAuthMode("signin");
-                  setEmail("admin@octai.local");
-                  setPassword("demo-password");
-                }}
-              >
-                Use admin
-              </button>
             </div>
           </div>
         </Card>
@@ -297,7 +300,7 @@ export function DashboardView() {
     <>
       <PageTitle
         title="Clinical Dashboard"
-        subtitle="A practical front-end demo for the OCT-only MVP. Data is stored in local demo mode until Supabase is connected."
+        subtitle="Monitor patients, OCT scans, AI-assisted draft reports, and clinician review activity."
         action={
           <div className="flex gap-2">
             <Link href="/patients/new">
@@ -563,7 +566,7 @@ export function UploadScanView() {
 
   return (
     <>
-      <PageTitle title="Upload OCT Scan" subtitle="Demo mode stores the image in the browser. Supabase Storage will replace this layer." />
+      <PageTitle title="Upload OCT Scan" subtitle="Upload a patient OCT image for AI-assisted classification and draft report preparation." />
       <div className="grid gap-5 lg:grid-cols-[1fr_420px]">
         <Card className="p-5">
           <div className="grid gap-4 md:grid-cols-2">
@@ -640,7 +643,7 @@ export function AnalysisView({ id }: { id: string }) {
         <Card className="p-5">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="font-black text-slate-950">Model Output</h3>
-            <StatusBadge status="demo" />
+            <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">EfficientNet-B3</span>
           </div>
           <SafetyNotice />
           {aiResult ? (
@@ -669,9 +672,9 @@ export function AnalysisView({ id }: { id: string }) {
             </div>
           ) : (
             <div className="mt-5">
-              <EmptyState title="No result yet" body="Run demo mode if the FastAPI backend is unavailable." />
+              <EmptyState title="No result yet" body="Run analysis to create an AI-assisted classification for this scan." />
               <Button className="mt-4" onClick={() => store.runAnalysis(scan)}>
-                Run Demo AI
+                Run Analysis
               </Button>
             </div>
           )}
@@ -849,7 +852,7 @@ export function AdminUsersView() {
   const store = useDemoStore();
   return (
     <>
-      <PageTitle title="Admin Users" subtitle="Demo role management view. Real edits will update the profiles table." />
+      <PageTitle title="User Access" subtitle="Review clinical users and their database-assigned roles." />
       <Card className="overflow-hidden">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
@@ -1077,7 +1080,7 @@ function ReportSection({ title, body }: { title: string; body: string }) {
 function Missing({ title, href, label }: { title: string; href: string; label: string }) {
   return (
     <Card className="p-6">
-      <EmptyState title={title} body="The selected record could not be found in demo storage." />
+      <EmptyState title={title} body="The selected record could not be found for the current account." />
       <Link href={href} className="mt-4 inline-flex">
         <Button variant="secondary">{label}</Button>
       </Link>

@@ -20,6 +20,7 @@ import type {
 } from "./types";
 
 const STORAGE_KEY = "oct-ai-report-assistant-demo-v1";
+const SUPER_ADMIN_EMAIL = "raahymm@gmail.com";
 
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -135,6 +136,16 @@ export const seedData: AppData = {
       createdAt: "2026-06-30T14:21:00.000Z"
     }
   ]
+};
+
+const emptyData: AppData = {
+  currentUserId: "",
+  profiles: [],
+  patients: [],
+  scans: [],
+  aiResults: [],
+  reports: [],
+  auditLogs: []
 };
 
 type DbProfile = {
@@ -261,13 +272,15 @@ function normalizeProbabilities(prediction: DiseaseClass) {
 }
 
 function userProfile(user: User): Profile {
+  const email = user.email ?? "";
   return {
     id: user.id,
-    fullName: user.user_metadata?.full_name ?? user.email?.split("@")[0] ?? "Doctor",
-    email: user.email ?? "",
-    role: (user.user_metadata?.role as Role | undefined) ?? "doctor",
+    fullName: user.user_metadata?.full_name ?? email.split("@")[0] ?? "Clinical user",
+    email,
+    role: email.toLowerCase() === SUPER_ADMIN_EMAIL ? "admin" : (user.user_metadata?.role as Role | undefined) ?? "doctor",
     doctorId: user.user_metadata?.doctor_id,
-    clinicName: user.user_metadata?.clinic_name ?? "OCT AI Clinic",
+    specialization: user.user_metadata?.department,
+    clinicName: user.user_metadata?.clinic_name ?? user.user_metadata?.department ?? "Clinical OCT Service",
     isActive: true
   };
 }
@@ -404,15 +417,15 @@ async function insertAudit(userId: string | null, action: string, recordType: st
 }
 
 export function useDemoStore() {
-  const [data, setData] = useState<AppData>(seedData);
+  const [data, setData] = useState<AppData>(emptyData);
   const [ready, setReady] = useState(false);
   const [sessionUser, setSessionUser] = useState<User | null>(null);
-  const [mode, setMode] = useState<"supabase" | "demo">("demo");
+  const [mode, setMode] = useState<"supabase" | "demo">("supabase");
 
   const currentUser = useMemo(
     () =>
       data.profiles.find((profile) => profile.id === data.currentUserId) ??
-      (sessionUser ? userProfile(sessionUser) : data.profiles[0]),
+      (sessionUser ? userProfile(sessionUser) : data.profiles[0] ?? userProfile({ id: "", email: "" } as User)),
     [data.currentUserId, data.profiles, sessionUser]
   );
 
@@ -469,17 +482,19 @@ export function useDemoStore() {
     let cancelled = false;
 
     async function init() {
-      const localData = readStore();
-      setData(localData);
-      writeStore(localData);
-
       if (!supabase) {
+        const localData = readStore();
+        setData(localData);
+        writeStore(localData);
+        setMode("demo");
         setReady(true);
         return;
       }
 
       const { data: authData } = await supabase.auth.getUser();
       if (!authData.user || cancelled) {
+        setData(emptyData);
+        setMode("supabase");
         setReady(true);
         return;
       }
@@ -502,8 +517,8 @@ export function useDemoStore() {
           void loadSupabaseData(user);
         }, 0);
       } else {
-        setMode("demo");
-        setData(readStore());
+        setMode("supabase");
+        setData(emptyData);
       }
     });
 
@@ -527,9 +542,13 @@ export function useDemoStore() {
       commit(audit({ ...data, currentUserId: profile.id }, "User login", "profile", profile.id, `${profile.role} demo session`));
     },
     async login(email: string, password: string) {
-      if (!supabase || email.toLowerCase().endsWith(".local")) {
+      if (email.toLowerCase().endsWith(".local")) {
+        throw new Error("Demo accounts are disabled on this deployment. Sign in with an approved clinical account.");
+      }
+
+      if (!supabase) {
         const profile = data.profiles.find((item) => item.email.toLowerCase() === email.toLowerCase());
-        if (!profile) throw new Error("Invalid login. Try doctor@octai.local, admin@octai.local, or assistant@octai.local.");
+        if (!profile) throw new Error("Invalid login.");
         setMode("demo");
         setSessionUser(null);
         commit(audit({ ...data, currentUserId: profile.id }, "User login", "profile", profile.id, `${profile.role} login`));
@@ -547,7 +566,7 @@ export function useDemoStore() {
       await loadSupabaseData(authUser);
       await insertAudit(authUser.id, "User login", "profile", authUser.id, "Supabase login");
     },
-    async signUp(input: { email: string; password: string; fullName: string; clinicName?: string }) {
+    async signUp(input: { email: string; password: string; fullName: string; role: Role; department: string; doctorId?: string }) {
       if (!supabase) throw new Error("Supabase is not configured.");
       const { data: signUpData, error } = await supabase.auth.signUp({
         email: input.email,
@@ -555,8 +574,10 @@ export function useDemoStore() {
         options: {
           data: {
             full_name: input.fullName,
-            role: "doctor",
-            clinic_name: input.clinicName || "OCT AI Clinic"
+            role: input.role,
+            department: input.department,
+            doctor_id: input.doctorId || null,
+            clinic_name: input.department || "Clinical OCT Service"
           }
         }
       });
@@ -585,9 +606,9 @@ export function useDemoStore() {
     },
     async logout() {
       if (supabase) await supabase.auth.signOut();
-      setMode("demo");
+      setMode(supabase ? "supabase" : "demo");
       setSessionUser(null);
-      setData(readStore());
+      setData(supabase ? emptyData : readStore());
     },
     async createPatient(input: Omit<Patient, "id" | "createdBy" | "createdAt" | "updatedAt">) {
       if (mode === "supabase" && supabase) {

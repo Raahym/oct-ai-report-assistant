@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useDemoStore } from "@/lib/demo-store";
-import type { Role } from "@/lib/types";
 import { Button } from "./ui";
 
 const navItems = [
@@ -49,7 +48,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           <div>
             <p className="text-sm font-black text-slate-950">OCT AI Report</p>
-            <p className="text-xs font-medium text-slate-500">Assistant MVP</p>
+            <p className="text-xs font-medium text-slate-500">Clinical Assistant</p>
           </div>
         </div>
         <nav className="space-y-1 p-4">
@@ -82,13 +81,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur md:px-8">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-clinic-700">
-                {store.mode === "supabase" ? "Supabase connected" : "Clinical demo mode"}
-              </p>
+              <p className="text-xs font-bold uppercase tracking-wide text-clinic-700">Clinical workspace</p>
               <h1 className="text-xl font-black text-slate-950">OCT AI Report Assistant</h1>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <RoleSwitch role={store.currentUser.role} onChange={store.switchRole} />
               <Button
                 variant="secondary"
                 onClick={async () => {
@@ -104,26 +100,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
         <main className="mx-auto max-w-7xl px-4 py-6 md:px-8">{children}</main>
       </div>
-    </div>
-  );
-}
-
-function RoleSwitch({ role, onChange }: { role: Role; onChange: (role: Role) => void }) {
-  const roles: Role[] = ["doctor", "assistant", "admin"];
-  return (
-    <div className="flex rounded-md border border-slate-200 bg-slate-50 p-1">
-      {roles.map((item) => (
-        <button
-          key={item}
-          onClick={() => onChange(item)}
-          className={clsx(
-            "rounded px-3 py-1.5 text-xs font-bold capitalize transition",
-            role === item ? "bg-white text-clinic-700 shadow-sm" : "text-slate-500 hover:text-slate-900"
-          )}
-        >
-          {item}
-        </button>
-      ))}
     </div>
   );
 }
