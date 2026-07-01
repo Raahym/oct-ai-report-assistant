@@ -1,0 +1,13 @@
+node_modules
+.next
+out
+.env
+.env.local
+*.log
+*.tsbuildinfo
+http*.txt
+__pycache__/
+*.pyc
+backend/.venv
+backend/saved_model/*.pth
+oct-ai-backend/.next/

@@ -1,0 +1,6 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "pnpm build",
+  "devCommand": "pnpm exec next dev --hostname 127.0.0.1",
+  "installCommand": "pnpm install"
+}

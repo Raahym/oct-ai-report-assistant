@@ -1,0 +1,149 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { clsx } from "clsx";
+import {
+  Activity,
+  ClipboardList,
+  FileClock,
+  LayoutDashboard,
+  LogOut,
+  Search,
+  ShieldCheck,
+  Upload,
+  UserCog,
+  UserPlus
+} from "lucide-react";
+import type { ReactNode } from "react";
+import { useDemoStore } from "@/lib/demo-store";
+import type { Role } from "@/lib/types";
+import { Button } from "./ui";
+
+const navItems = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/patients/new", label: "New Patient", icon: UserPlus },
+  { href: "/patients/search", label: "Search Patient", icon: Search },
+  { href: "/scans/upload", label: "Upload Scan", icon: Upload },
+  { href: "/reports/history", label: "Report History", icon: FileClock }
+];
+
+const adminItems = [
+  { href: "/admin/users", label: "Admin Users", icon: UserCog },
+  { href: "/admin/templates", label: "Templates", icon: ClipboardList },
+  { href: "/admin/audit-logs", label: "Audit Logs", icon: ShieldCheck }
+];
+
+export function AppShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const store = useDemoStore();
+  const items = store.currentUser.role === "admin" ? [...navItems, ...adminItems] : navItems;
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <aside className="fixed inset-y-0 left-0 z-20 hidden w-72 border-r border-slate-200 bg-white lg:block">
+        <div className="flex h-20 items-center gap-3 border-b border-slate-100 px-6">
+          <div className="flex h-11 w-11 items-center justify-center rounded-md bg-clinic-600 text-white">
+            <Activity size={22} />
+          </div>
+          <div>
+            <p className="text-sm font-black text-slate-950">OCT AI Report</p>
+            <p className="text-xs font-medium text-slate-500">Assistant MVP</p>
+          </div>
+        </div>
+        <nav className="space-y-1 p-4">
+          {items.map((item) => {
+            const Icon = item.icon;
+            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={clsx(
+                  "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition",
+                  active ? "bg-clinic-50 text-clinic-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                )}
+              >
+                <Icon size={18} />
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+        <div className="absolute bottom-0 left-0 right-0 border-t border-slate-100 p-4">
+          <div className="rounded-md bg-slate-50 p-3">
+            <p className="text-sm font-bold text-slate-900">{store.currentUser.fullName}</p>
+            <p className="text-xs text-slate-500">{store.currentUser.role.toUpperCase()}</p>
+          </div>
+        </div>
+      </aside>
+      <div className="lg:pl-72">
+        <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur md:px-8">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-clinic-700">
+                {store.mode === "supabase" ? "Supabase connected" : "Clinical demo mode"}
+              </p>
+              <h1 className="text-xl font-black text-slate-950">OCT AI Report Assistant</h1>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <RoleSwitch role={store.currentUser.role} onChange={store.switchRole} />
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  await store.logout();
+                  router.push("/login");
+                }}
+              >
+                <LogOut size={16} />
+                Logout
+              </Button>
+            </div>
+          </div>
+        </header>
+        <main className="mx-auto max-w-7xl px-4 py-6 md:px-8">{children}</main>
+      </div>
+    </div>
+  );
+}
+
+function RoleSwitch({ role, onChange }: { role: Role; onChange: (role: Role) => void }) {
+  const roles: Role[] = ["doctor", "assistant", "admin"];
+  return (
+    <div className="flex rounded-md border border-slate-200 bg-slate-50 p-1">
+      {roles.map((item) => (
+        <button
+          key={item}
+          onClick={() => onChange(item)}
+          className={clsx(
+            "rounded px-3 py-1.5 text-xs font-bold capitalize transition",
+            role === item ? "bg-white text-clinic-700 shadow-sm" : "text-slate-500 hover:text-slate-900"
+          )}
+        >
+          {item}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function PageTitle({
+  title,
+  subtitle,
+  action
+}: {
+  title: string;
+  subtitle?: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h2 className="text-2xl font-black tracking-tight text-slate-950">{title}</h2>
+        {subtitle ? <p className="mt-1 max-w-3xl text-sm text-slate-500">{subtitle}</p> : null}
+      </div>
+      {action}
+    </div>
+  );
+}
