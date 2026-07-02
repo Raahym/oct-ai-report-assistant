@@ -302,15 +302,15 @@ export function DashboardView() {
         title="Clinical Dashboard"
         subtitle="Monitor patients, OCT scans, AI-assisted draft reports, and clinician review activity."
         action={
-          <div className="flex gap-2">
-            <Link href="/patients/new">
-              <Button>
+          <div className="grid gap-2 sm:flex">
+            <Link href="/patients/new" className="block">
+              <Button className="w-full">
                 <Plus size={16} />
                 New Patient
               </Button>
             </Link>
-            <Link href="/scans/upload">
-              <Button variant="secondary">
+            <Link href="/scans/upload" className="block">
+              <Button className="w-full" variant="secondary">
                 <Upload size={16} />
                 Upload OCT
               </Button>
@@ -405,7 +405,7 @@ export function NewPatientView() {
         </div>
         {error ? <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
         <div className="mt-5 flex justify-end">
-          <Button onClick={submit}>
+          <Button className="w-full sm:w-auto" onClick={submit}>
             <Save size={16} />
             Save Patient
           </Button>
@@ -451,8 +451,8 @@ export function PatientProfileView({ id }: { id: string }) {
         title={patient.fullName}
         subtitle={`${patient.patientCode} | ${patient.age} years | ${patient.gender}`}
         action={
-          <Link href={`/scans/upload?patient=${patient.id}`}>
-            <Button>
+          <Link href={`/scans/upload?patient=${patient.id}`} className="block">
+            <Button className="w-full">
               <Upload size={16} />
               Upload New OCT Scan
             </Button>
@@ -484,10 +484,10 @@ export function PatientProfileView({ id }: { id: string }) {
                         AI: {ai ? `${ai.predictedClass} (${Math.round(ai.confidence * 100)}%)` : "Not analyzed"}
                       </p>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="grid gap-2 sm:flex sm:flex-wrap">
                       {report ? <StatusBadge status={report.status} /> : null}
-                      <Link href={`/scans/${scan.id}/analysis`}>
-                        <Button variant="secondary">Open Analysis</Button>
+                      <Link href={`/scans/${scan.id}/analysis`} className="block">
+                        <Button className="w-full" variant="secondary">Open Analysis</Button>
                       </Link>
                     </div>
                   </div>
@@ -589,7 +589,7 @@ export function UploadScanView() {
           {error ? <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
           {analysisWarning ? <p className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">{analysisWarning}</p> : null}
           <div className="mt-5 flex justify-end">
-            <Button onClick={submit} disabled={loading}>
+            <Button className="w-full sm:w-auto" onClick={submit} disabled={loading}>
               {loading ? <Loader2 className="animate-spin" size={16} /> : <Wand2 size={16} />}
               {loading ? "Analyzing with EfficientNet-B3..." : "Save and Analyze"}
             </Button>
@@ -630,7 +630,7 @@ export function AnalysisView({ id }: { id: string }) {
         title="AI Analysis"
         subtitle={patient ? `${patient.patientCode} - ${patient.fullName}` : "OCT scan analysis"}
         action={
-          <Button onClick={generate}>
+          <Button className="w-full" onClick={generate}>
             <FileText size={16} />
             Generate Report
           </Button>
@@ -660,20 +660,20 @@ export function AnalysisView({ id }: { id: string }) {
               </div>
               <Info label="Model" value={`${aiResult.modelName} ${aiResult.modelVersion}`} />
               <Info label="Timestamp" value={new Date(aiResult.createdAt).toLocaleString()} />
-              <div className="flex gap-2">
-                <Button variant="secondary" onClick={() => store.runAnalysis(scan)}>
+              <div className="grid gap-2 sm:flex">
+                <Button className="w-full sm:w-auto" variant="secondary" onClick={() => store.runAnalysis(scan)}>
                   <RotateCcw size={16} />
                   Re-run Analysis
                 </Button>
-                <Link href={`/patients/${scan.patientId}`}>
-                  <Button variant="ghost">Back to Patient</Button>
+                <Link href={`/patients/${scan.patientId}`} className="block">
+                  <Button className="w-full sm:w-auto" variant="ghost">Back to Patient</Button>
                 </Link>
               </div>
             </div>
           ) : (
             <div className="mt-5">
               <EmptyState title="No result yet" body="Run analysis to create an AI-assisted classification for this scan." />
-              <Button className="mt-4" onClick={() => store.runAnalysis(scan)}>
+              <Button className="mt-4 w-full sm:w-auto" onClick={() => store.runAnalysis(scan)}>
                 Run Analysis
               </Button>
             </div>
@@ -753,13 +753,13 @@ export function ReportEditorView({ id }: { id: string }) {
           </div>
           {error ? <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
           {saved ? <p className="mt-4 rounded-md bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">Draft saved.</p> : null}
-          <div className="mt-5 flex flex-wrap justify-end gap-2">
-            <Button variant="secondary" onClick={() => save("draft")}>
+          <div className="mt-5 grid gap-2 sm:flex sm:flex-wrap sm:justify-end">
+            <Button className="w-full sm:w-auto" variant="secondary" onClick={() => save("draft")}>
               <Save size={16} />
               Save Draft
             </Button>
-            <Button variant="secondary" onClick={() => save("pending_review")}>Needs Review</Button>
-            <Button onClick={approve}>
+            <Button className="w-full sm:w-auto" variant="secondary" onClick={() => save("pending_review")}>Needs Review</Button>
+            <Button className="w-full sm:w-auto" onClick={approve}>
               <CheckCircle2 size={16} />
               Approve Report
             </Button>
@@ -869,7 +869,53 @@ export function AdminUsersView() {
     <>
       <PageTitle title="User Access" subtitle="Approve new doctors, assistants, and admin staff before they can enter the workspace." />
       {error ? <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
-      <Card className="overflow-hidden">
+      <div className="space-y-3 md:hidden">
+        {store.data.profiles.map((profile) => (
+          <Card key={profile.id} className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate font-black text-slate-950">{profile.fullName}</p>
+                <p className="mt-1 break-all text-sm text-slate-500">{profile.email}</p>
+              </div>
+              <StatusBadge status={profile.isActive ? "active" : "pending"} />
+            </div>
+            <div className="mt-4 grid gap-3">
+              <label className="block">
+                <span className="label">Role</span>
+                <select
+                  className="field mt-1 py-2 capitalize"
+                  value={profile.role}
+                  disabled={savingId === profile.id || profile.email.toLowerCase() === "raahymm@gmail.com"}
+                  onChange={(event) => updateAccess(profile.id, { role: event.target.value as Role })}
+                >
+                  <option value="doctor">Doctor</option>
+                  <option value="assistant">Assistant</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </label>
+              <Info label="Doctor ID" value={profile.doctorId ?? "-"} />
+              {profile.email.toLowerCase() === "raahymm@gmail.com" ? (
+                <span className="rounded-md bg-slate-100 px-3 py-2 text-center text-xs font-bold uppercase text-slate-500">Owner</span>
+              ) : profile.isActive ? (
+                <Button
+                  className="w-full"
+                  variant="secondary"
+                  disabled={savingId === profile.id}
+                  onClick={() => updateAccess(profile.id, { isActive: false })}
+                >
+                  Suspend Access
+                </Button>
+              ) : (
+                <Button className="w-full" disabled={savingId === profile.id} onClick={() => updateAccess(profile.id, { isActive: true })}>
+                  Approve Access
+                </Button>
+              )}
+            </div>
+          </Card>
+        ))}
+        {store.data.profiles.length === 0 ? <EmptyState title="No account requests yet" body="New signup requests will appear here." /> : null}
+      </div>
+      <Card className="hidden overflow-hidden md:block">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
@@ -956,7 +1002,23 @@ export function AuditLogsView() {
   return (
     <>
       <PageTitle title="Audit Logs" subtitle="Tracks clinical workflow actions for accountability." />
-      <Card className="overflow-hidden">
+      <div className="space-y-3 md:hidden">
+        {store.data.auditLogs.map((log) => {
+          const user = store.data.profiles.find((profile) => profile.id === log.userId);
+          return (
+            <Card key={log.id} className="p-4">
+              <p className="font-black text-slate-950">{log.action}</p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <Info label="User" value={user?.fullName ?? "Unknown"} />
+                <Info label="Record" value={log.recordType || "-"} />
+              </div>
+              <Info label="Timestamp" value={new Date(log.createdAt).toLocaleString()} />
+            </Card>
+          );
+        })}
+        {store.data.auditLogs.length === 0 ? <EmptyState title="No audit logs" body="Workflow actions will appear here." /> : null}
+      </div>
+      <Card className="hidden overflow-hidden md:block">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
@@ -1000,12 +1062,12 @@ function ReportRows({ reports }: { reports: Report[] }) {
               <p className="text-sm text-slate-500">{patient?.patientCode} | AI: {ai?.predictedClass ?? "-"}</p>
             </div>
             <StatusBadge status={report.status} />
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:flex">
               <Link href={`/reports/${report.id}/edit`}>
-                <Button variant="secondary">Edit</Button>
+                <Button className="w-full" variant="secondary">Edit</Button>
               </Link>
               <Link href={`/reports/${report.id}/view`}>
-                <Button variant="secondary">View</Button>
+                <Button className="w-full" variant="secondary">View</Button>
               </Link>
             </div>
           </div>
@@ -1018,37 +1080,58 @@ function ReportRows({ reports }: { reports: Report[] }) {
 function PatientTable({ patients, scans, reports }: { patients: Patient[]; scans: { patientId: string; createdAt: string }[]; reports: Report[] }) {
   if (!patients.length) return <div className="p-5"><EmptyState title="No patients found" body="Try a different patient ID or name." /></div>;
   return (
-    <table className="w-full text-left text-sm">
-      <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-        <tr>
-          <th className="px-5 py-3">Patient ID</th>
-          <th className="px-5 py-3">Name</th>
-          <th className="px-5 py-3">Age/Gender</th>
-          <th className="px-5 py-3">Last scan</th>
-          <th className="px-5 py-3">Reports</th>
-          <th className="px-5 py-3">Action</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-slate-100">
+    <>
+      <div className="divide-y divide-slate-100 md:hidden">
         {patients.map((patient) => {
           const patientScans = scans.filter((scan) => scan.patientId === patient.id);
           return (
-            <tr key={patient.id}>
-              <td className="px-5 py-4 font-bold">{patient.patientCode}</td>
-              <td className="px-5 py-4">{patient.fullName}</td>
-              <td className="px-5 py-4">{patient.age} / {patient.gender}</td>
-              <td className="px-5 py-4">{patientScans[0] ? new Date(patientScans[0].createdAt).toLocaleDateString() : "-"}</td>
-              <td className="px-5 py-4">{reports.filter((report) => report.patientId === patient.id).length}</td>
-              <td className="px-5 py-4">
-                <Link href={`/patients/${patient.id}`}>
-                  <Button variant="secondary">Open</Button>
-                </Link>
-              </td>
-            </tr>
+            <div key={patient.id} className="p-4">
+              <p className="font-black text-slate-950">{patient.fullName}</p>
+              <p className="mt-1 text-sm font-semibold text-clinic-700">{patient.patientCode}</p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <Info label="Age / Gender" value={`${patient.age} / ${patient.gender}`} />
+                <Info label="Reports" value={String(reports.filter((report) => report.patientId === patient.id).length)} />
+              </div>
+              <Info label="Last scan" value={patientScans[0] ? new Date(patientScans[0].createdAt).toLocaleDateString() : "-"} />
+              <Link href={`/patients/${patient.id}`} className="mt-4 block">
+                <Button className="w-full" variant="secondary">Open Patient</Button>
+              </Link>
+            </div>
           );
         })}
-      </tbody>
-    </table>
+      </div>
+      <table className="hidden w-full text-left text-sm md:table">
+        <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+          <tr>
+            <th className="px-5 py-3">Patient ID</th>
+            <th className="px-5 py-3">Name</th>
+            <th className="px-5 py-3">Age/Gender</th>
+            <th className="px-5 py-3">Last scan</th>
+            <th className="px-5 py-3">Reports</th>
+            <th className="px-5 py-3">Action</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {patients.map((patient) => {
+            const patientScans = scans.filter((scan) => scan.patientId === patient.id);
+            return (
+              <tr key={patient.id}>
+                <td className="px-5 py-4 font-bold">{patient.patientCode}</td>
+                <td className="px-5 py-4">{patient.fullName}</td>
+                <td className="px-5 py-4">{patient.age} / {patient.gender}</td>
+                <td className="px-5 py-4">{patientScans[0] ? new Date(patientScans[0].createdAt).toLocaleDateString() : "-"}</td>
+                <td className="px-5 py-4">{reports.filter((report) => report.patientId === patient.id).length}</td>
+                <td className="px-5 py-4">
+                  <Link href={`/patients/${patient.id}`}>
+                    <Button variant="secondary">Open</Button>
+                  </Link>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </>
   );
 }
 

@@ -84,7 +84,19 @@ export function AppShell({ children }: { children: ReactNode }) {
               <p className="text-xs font-bold uppercase tracking-wide text-clinic-700">Clinical workspace</p>
               <h1 className="text-xl font-black text-slate-950">OCT AI Report Assistant</h1>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
+              <select
+                className="field min-h-10 w-full py-2 text-sm font-semibold md:w-56 lg:hidden"
+                value={items.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) ? items.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))?.href : "/dashboard"}
+                onChange={(event) => router.push(event.target.value)}
+                aria-label="Navigate workspace"
+              >
+                {items.map((item) => (
+                  <option key={item.href} value={item.href}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
               <Button
                 variant="secondary"
                 onClick={async () => {
@@ -98,7 +110,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
         </header>
-        <main className="mx-auto max-w-7xl px-4 py-6 md:px-8">{children}</main>
+        <main className="mx-auto max-w-7xl px-3 py-5 sm:px-4 md:px-8">{children}</main>
       </div>
     </div>
   );
@@ -119,7 +131,7 @@ export function PageTitle({
         <h2 className="text-2xl font-black tracking-tight text-slate-950">{title}</h2>
         {subtitle ? <p className="mt-1 max-w-3xl text-sm text-slate-500">{subtitle}</p> : null}
       </div>
-      {action}
+      {action ? <div className="w-full sm:w-auto">{action}</div> : null}
     </div>
   );
 }
