@@ -10,10 +10,17 @@ export async function predictOCT(file: File): Promise<BackendPrediction> {
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch(`${backendUrl}/predict`, {
-    method: "POST",
-    body: formData
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${backendUrl}/predict`, {
+      method: "POST",
+      body: formData
+    });
+  } catch (error) {
+    throw new Error(
+      "Could not reach the AI backend. Check your internet connection, Render backend status, or CORS settings."
+    );
+  }
 
   if (!response.ok) {
     let detail = "AI prediction failed.";

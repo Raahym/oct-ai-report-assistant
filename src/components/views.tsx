@@ -850,9 +850,25 @@ export function ReportHistoryView() {
 
 export function AdminUsersView() {
   const store = useDemoStore();
+  const [savingId, setSavingId] = useState("");
+  const [error, setError] = useState("");
+
+  const updateAccess = async (profileId: string, input: { role?: Role; isActive?: boolean }) => {
+    setError("");
+    setSavingId(profileId);
+    try {
+      await store.updateProfileAccess(profileId, input);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update user access.");
+    } finally {
+      setSavingId("");
+    }
+  };
+
   return (
     <>
-      <PageTitle title="User Access" subtitle="Review clinical users and their database-assigned roles." />
+      <PageTitle title="User Access" subtitle="Approve new doctors, assistants, and admin staff before they can enter the workspace." />
+      {error ? <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
       <Card className="overflow-hidden">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
@@ -862,6 +878,7 @@ export function AdminUsersView() {
               <th className="px-5 py-3">Role</th>
               <th className="px-5 py-3">Doctor ID</th>
               <th className="px-5 py-3">Status</th>
+              <th className="px-5 py-3">Access</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -869,11 +886,46 @@ export function AdminUsersView() {
               <tr key={profile.id}>
                 <td className="px-5 py-4 font-bold">{profile.fullName}</td>
                 <td className="px-5 py-4">{profile.email}</td>
-                <td className="px-5 py-4 capitalize">{profile.role}</td>
+                <td className="px-5 py-4">
+                  <select
+                    className="field min-w-32 py-2 capitalize"
+                    value={profile.role}
+                    disabled={savingId === profile.id || profile.email.toLowerCase() === "raahymm@gmail.com"}
+                    onChange={(event) => updateAccess(profile.id, { role: event.target.value as Role })}
+                  >
+                    <option value="doctor">Doctor</option>
+                    <option value="assistant">Assistant</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </td>
                 <td className="px-5 py-4">{profile.doctorId ?? "-"}</td>
-                <td className="px-5 py-4"><StatusBadge status="active" /></td>
+                <td className="px-5 py-4"><StatusBadge status={profile.isActive ? "active" : "pending"} /></td>
+                <td className="px-5 py-4">
+                  {profile.email.toLowerCase() === "raahymm@gmail.com" ? (
+                    <span className="text-xs font-bold uppercase text-slate-400">Owner</span>
+                  ) : profile.isActive ? (
+                    <Button
+                      variant="secondary"
+                      disabled={savingId === profile.id}
+                      onClick={() => updateAccess(profile.id, { isActive: false })}
+                    >
+                      Suspend
+                    </Button>
+                  ) : (
+                    <Button disabled={savingId === profile.id} onClick={() => updateAccess(profile.id, { isActive: true })}>
+                      Approve
+                    </Button>
+                  )}
+                </td>
               </tr>
             ))}
+            {store.data.profiles.length === 0 ? (
+              <tr>
+                <td className="px-5 py-8 text-center text-sm font-semibold text-slate-500" colSpan={6}>
+                  No account requests yet.
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </Card>

@@ -273,15 +273,16 @@ function normalizeProbabilities(prediction: DiseaseClass) {
 
 function userProfile(user: User): Profile {
   const email = user.email ?? "";
+  const isSuperAdmin = email.toLowerCase() === SUPER_ADMIN_EMAIL;
   return {
     id: user.id,
     fullName: user.user_metadata?.full_name ?? email.split("@")[0] ?? "Clinical user",
     email,
-    role: email.toLowerCase() === SUPER_ADMIN_EMAIL ? "admin" : (user.user_metadata?.role as Role | undefined) ?? "doctor",
+    role: isSuperAdmin ? "admin" : (user.user_metadata?.role as Role | undefined) ?? "doctor",
     doctorId: user.user_metadata?.doctor_id,
     specialization: user.user_metadata?.department,
     clinicName: user.user_metadata?.clinic_name ?? user.user_metadata?.department ?? "Clinical OCT Service",
-    isActive: true
+    isActive: isSuperAdmin
   };
 }
 
@@ -386,22 +387,38 @@ function mergeCurrentProfile(profiles: Profile[], user: User | null) {
 async function ensureProfile(user: User) {
   if (!supabase) return;
   const fallback = userProfile(user);
-  const { error } = await supabase.from("profiles").upsert(
-    {
-      id: user.id,
-      full_name: fallback.fullName,
-      email: fallback.email,
-      role: fallback.role,
-      doctor_id: fallback.doctorId ?? null,
-      specialization: fallback.specialization ?? null,
-      clinic_name: fallback.clinicName ?? "OCT AI Clinic",
-      is_active: true
-    },
-    { onConflict: "id" }
-  );
+  const { data: existing, error: lookupError } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (lookupError) {
+    throw new Error(`Could not check profile approval: ${lookupError.message}`);
+  }
+
+  if (existing) return;
+
+  const { error } = await supabase.from("profiles").insert({
+    id: user.id,
+    full_name: fallback.fullName,
+    email: fallback.email,
+    role: fallback.role,
+    doctor_id: fallback.doctorId ?? null,
+    specialization: fallback.specialization ?? null,
+    clinic_name: fallback.clinicName ?? "OCT AI Clinic",
+    is_active: fallback.isActive
+  });
 
   if (error) {
     throw new Error(`Could not create profile: ${error.message}`);
+  }
+}
+
+function requireApprovedProfile(profile: Profile) {
+  if (profile.email.toLowerCase() === SUPER_ADMIN_EMAIL) return;
+  if (!profile.isActive) {
+    throw new Error("Your account is waiting for approval from raahymm@gmail.com.");
   }
 }
 
@@ -467,9 +484,13 @@ export function useDemoStore() {
     if (firstError) throw firstError;
 
     setMode("supabase");
+    const profiles = mergeCurrentProfile(((profilesResult.data ?? []) as DbProfile[]).map(mapProfile), user);
+    const currentProfile = profiles.find((profile) => profile.id === user.id) ?? userProfile(user);
+    requireApprovedProfile(currentProfile);
+
     setData({
       currentUserId: user.id,
-      profiles: mergeCurrentProfile(((profilesResult.data ?? []) as DbProfile[]).map(mapProfile), user),
+      profiles,
       patients: ((patientsResult.data ?? []) as DbPatient[]).map(mapPatient),
       scans: ((scansResult.data ?? []) as DbScan[]).map(mapScan),
       aiResults: ((aiResultsResult.data ?? []) as DbAiResult[]).map(mapAiResult),
@@ -502,6 +523,10 @@ export function useDemoStore() {
       setSessionUser(authData.user);
       try {
         await loadSupabaseData(authData.user);
+      } catch {
+        await supabase.auth.signOut();
+        setSessionUser(null);
+        setData(emptyData);
       } finally {
         if (!cancelled) setReady(true);
       }
@@ -563,7 +588,14 @@ export function useDemoStore() {
 
       await ensureProfile(authUser);
       setSessionUser(authUser);
-      await loadSupabaseData(authUser);
+      try {
+        await loadSupabaseData(authUser);
+      } catch (err) {
+        await supabase.auth.signOut();
+        setSessionUser(null);
+        setData(emptyData);
+        throw err;
+      }
       await insertAudit(authUser.id, "User login", "profile", authUser.id, "Supabase login");
     },
     async signUp(input: { email: string; password: string; fullName: string; role: Role; department: string; doctorId?: string }) {
@@ -589,9 +621,11 @@ export function useDemoStore() {
       }
 
       await ensureProfile(authUser);
-      setSessionUser(authUser);
-      await loadSupabaseData(authUser);
       await insertAudit(authUser.id, "User signup", "profile", authUser.id, "Supabase signup");
+      await supabase.auth.signOut();
+      setSessionUser(null);
+      setData(emptyData);
+      throw new Error("Account created. Confirm your email if needed, then wait for approval from raahymm@gmail.com.");
     },
     async resetPassword(email: string) {
       if (!supabase) throw new Error("Supabase is not configured.");
@@ -870,6 +904,39 @@ export function useDemoStore() {
       const reports = data.reports.map((item) => (item.id === report.id ? approved : item));
       commit(audit({ ...data, reports }, "Report approved", "report", report.id, currentUser.fullName));
       return approved;
+    },
+    async updateProfileAccess(profileId: string, input: { role?: Role; isActive?: boolean }) {
+      if (currentUser.email.toLowerCase() !== SUPER_ADMIN_EMAIL) {
+        throw new Error("Only raahymm@gmail.com can approve clinical access.");
+      }
+      if (!supabase || mode !== "supabase") {
+        const profiles = data.profiles.map((profile) =>
+          profile.id === profileId
+            ? { ...profile, role: input.role ?? profile.role, isActive: input.isActive ?? profile.isActive }
+            : profile
+        );
+        commit(audit({ ...data, profiles }, "User access updated", "profile", profileId, "Local access update"));
+        return;
+      }
+
+      const updates: { role?: Role; is_active?: boolean } = {};
+      if (input.role) updates.role = input.role;
+      if (typeof input.isActive === "boolean") updates.is_active = input.isActive;
+
+      const { data: row, error } = await supabase
+        .from("profiles")
+        .update(updates)
+        .eq("id", profileId)
+        .select("*")
+        .single();
+
+      if (error) throw new Error(error.message);
+      const saved = mapProfile(row as DbProfile);
+      setData((current) => ({
+        ...current,
+        profiles: current.profiles.map((profile) => (profile.id === saved.id ? saved : profile))
+      }));
+      await insertAudit(actorId, "User access updated", "profile", saved.id, `${saved.role} / ${saved.isActive ? "approved" : "suspended"}`);
     },
     resetDemo() {
       commit(seedData);
