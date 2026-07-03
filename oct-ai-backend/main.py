@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import requests
 import torch
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -362,21 +363,20 @@ def send_report_access_email(input_data: ReportAccessEmailRequest):
             "subject": subject,
             "text": text_content,
         }
-        request = urllib.request.Request(
-            "https://api.resend.com/emails",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {RESEND_API_KEY}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            method="POST",
-        )
         try:
-            with urllib.request.urlopen(request, timeout=20) as response:
-                response.read()
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
+            response = requests.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {RESEND_API_KEY}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                json=payload,
+                timeout=20,
+            )
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            detail = exc.response.text if exc.response is not None else str(exc)
             raise HTTPException(status_code=502, detail=f"Email sending failed: {detail}") from exc
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Email sending failed: {exc}") from exc
