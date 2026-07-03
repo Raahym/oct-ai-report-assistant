@@ -40,7 +40,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const store = useDemoStore();
-  const items = store.currentUser.role === "admin" ? [...navItems, ...adminItems] : navItems;
+  const clinicalItems = store.currentUser.role === "admin" ? navItems.filter((item) => item.href !== "/reports/check") : navItems;
+  const items = store.currentUser.role === "admin" ? [...clinicalItems, ...adminItems] : clinicalItems;
 
   return (
     <div className="min-h-screen bg-slate-50">
