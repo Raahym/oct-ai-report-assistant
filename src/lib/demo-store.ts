@@ -684,6 +684,74 @@ export function useDemoStore() {
       commit(audit({ ...data, patients: [patient, ...data.patients] }, "Patient created", "patient", patient.id, patient.patientCode));
       return patient;
     },
+    async updatePatient(patientId: string, input: Omit<Patient, "id" | "createdBy" | "createdAt" | "updatedAt">) {
+      if (mode === "supabase" && supabase) {
+        const { data: row, error } = await supabase
+          .from("patients")
+          .update({
+            patient_code: input.patientCode,
+            full_name: input.fullName,
+            age: input.age,
+            gender: input.gender,
+            phone: input.phone || null,
+            email: input.email || null,
+            address: input.address || null,
+            diabetes_history: input.diabetesHistory,
+            previous_eye_disease: input.previousEyeDisease || null,
+            clinical_notes: input.clinicalNotes || null,
+            updated_at: now()
+          })
+          .eq("id", patientId)
+          .select("*")
+          .single();
+
+        if (error) throw new Error(error.message);
+        const patient = mapPatient(row as DbPatient);
+        setData((current) => ({ ...current, patients: current.patients.map((item) => (item.id === patient.id ? patient : item)) }));
+        await insertAudit(actorId, "Patient updated", "patient", patient.id, patient.patientCode);
+        return patient;
+      }
+
+      if (data.patients.some((patient) => patient.patientCode === input.patientCode && patient.id !== patientId)) {
+        throw new Error("Duplicate patient ID. Please enter a unique MR number.");
+      }
+
+      const existing = data.patients.find((patient) => patient.id === patientId);
+      if (!existing) throw new Error("Patient not found.");
+      const patient: Patient = {
+        ...existing,
+        ...input,
+        updatedAt: now()
+      };
+      const patients = data.patients.map((item) => (item.id === patient.id ? patient : item));
+      commit(audit({ ...data, patients }, "Patient updated", "patient", patient.id, patient.patientCode));
+      return patient;
+    },
+    async deletePatient(patientId: string) {
+      if (mode === "supabase" && supabase) {
+        const { error } = await supabase.from("patients").delete().eq("id", patientId);
+        if (error) throw new Error(error.message);
+        setData((current) => ({
+          ...current,
+          patients: current.patients.filter((patient) => patient.id !== patientId),
+          scans: current.scans.filter((scan) => scan.patientId !== patientId),
+          reports: current.reports.filter((report) => report.patientId !== patientId)
+        }));
+        await insertAudit(actorId, "Patient deleted", "patient", patientId, "Patient and linked records removed");
+        return;
+      }
+
+      const patientScanIds = data.scans.filter((scan) => scan.patientId === patientId).map((scan) => scan.id);
+      const patientReportIds = data.reports.filter((report) => report.patientId === patientId).map((report) => report.id);
+      commit(audit({
+        ...data,
+        patients: data.patients.filter((patient) => patient.id !== patientId),
+        scans: data.scans.filter((scan) => scan.patientId !== patientId),
+        aiResults: data.aiResults.filter((result) => !patientScanIds.includes(result.scanId)),
+        reports: data.reports.filter((report) => report.patientId !== patientId),
+        auditLogs: data.auditLogs.filter((log) => !patientReportIds.includes(log.recordId))
+      }, "Patient deleted", "patient", patientId, "Patient and linked records removed"));
+    },
     async addScan(input: { patientId: string; imageUrl: string; eyeSide: EyeSide; scanNotes?: string; file?: File }) {
       if (mode === "supabase" && supabase && input.file) {
         const extension = input.file.name.split(".").pop()?.toLowerCase() || "jpg";

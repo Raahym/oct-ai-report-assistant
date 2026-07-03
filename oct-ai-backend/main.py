@@ -115,15 +115,16 @@ model, model_error = load_model()
 
 
 class ReportCheckRequest(BaseModel):
-    report_id: str
+    access_id: str
     password: str
 
 
 class ReportAccessEmailRequest(BaseModel):
     to_email: str
     patient_name: str
-    report_id: str
+    access_id: str
     password: str
+    mode: str = "report-ready"
 
 
 def basic_oct_image_check(image: Image.Image) -> bool:
@@ -161,6 +162,15 @@ def fnv1a(seed: str) -> int:
 
 def get_report_access_password(report_id: str, created_at: str) -> str:
     value = fnv1a(f"{report_id}:{created_at}")
+    password = ""
+    for _ in range(7):
+        value = (value * 1664525 + 1013904223) & 0xFFFFFFFF
+        password += ACCESS_ALPHABET[value % len(ACCESS_ALPHABET)]
+    return password
+
+
+def get_patient_access_password(patient_id: str, created_at: str) -> str:
+    value = fnv1a(f"{patient_id}:{created_at}")
     password = ""
     for _ in range(7):
         value = (value * 1664525 + 1013904223) & 0xFFFFFFFF
@@ -236,30 +246,38 @@ def check_report_access(input_data: ReportCheckRequest):
             "message": "Public report lookup is not configured on the backend.",
         }
 
-    report_id = input_data.report_id.strip()
+    access_id = input_data.access_id.strip()
     password = input_data.password.strip()
-    if not report_id or not password:
-        raise HTTPException(status_code=400, detail="Report ID and password are required.")
+    if not access_id or not password:
+        raise HTTPException(status_code=400, detail="Access ID and password are required.")
 
     try:
-        report = first_row("reports", {"id": f"eq.{report_id}", "select": "*"})
-        if not report:
-            return {"configured": True, "found": False, "approved": False, "message": "No matching report found."}
+        patient = first_row("patients", {"patient_code": f"eq.{access_id}", "select": "*"})
+        if not patient:
+            return {"configured": True, "found": False, "approved": False, "message": "No matching patient access record found."}
 
-        expected_password = get_report_access_password(report["id"], report["created_at"])
+        expected_password = get_patient_access_password(patient["id"], patient["created_at"])
         if password != expected_password:
-            return {"configured": True, "found": False, "approved": False, "message": "Invalid report ID or password."}
+            return {"configured": True, "found": False, "approved": False, "message": "Invalid access ID or password."}
 
-        if report["status"] != "approved":
+        reports = supabase_select(
+            "reports",
+            {
+                "patient_id": f"eq.{patient['id']}",
+                "order": "approved_at.desc.nullslast,created_at.desc",
+                "select": "*",
+            },
+        )
+        report = next((row for row in reports if row.get("status") == "approved"), None)
+        if not report:
             return {
                 "configured": True,
                 "found": True,
                 "approved": False,
-                "status": report["status"],
-                "message": "Report is registered but not approved yet.",
+                "status": reports[0]["status"] if reports else "draft",
+                "message": "Patient access is valid, but no approved report is available yet.",
             }
 
-        patient = first_row("patients", {"id": f"eq.{report['patient_id']}", "select": "*"})
         ai_result = first_row("ai_results", {"id": f"eq.{report['ai_result_id']}", "select": "*"})
 
         return {
@@ -269,10 +287,10 @@ def check_report_access(input_data: ReportCheckRequest):
             "status": report["status"],
             "report": {
                 "id": report["id"],
-                "patientCode": patient.get("patient_code", "") if patient else "",
-                "patientName": patient.get("full_name", "") if patient else "",
-                "age": patient.get("age") if patient else None,
-                "gender": patient.get("gender") if patient else None,
+                "patientCode": patient.get("patient_code", ""),
+                "patientName": patient.get("full_name", ""),
+                "age": patient.get("age"),
+                "gender": patient.get("gender"),
                 "predictedClass": ai_result.get("predicted_class") if ai_result else None,
                 "confidence": ai_result.get("confidence") if ai_result else None,
                 "findings": report.get("findings") or "",
@@ -290,15 +308,24 @@ def check_report_access(input_data: ReportCheckRequest):
 @app.post("/reports/send-access-email")
 def send_report_access_email(input_data: ReportAccessEmailRequest):
     if not smtp_configured():
+        fallback_message = (
+            "Patient saved, but backend email settings are not configured. Copy and send the access ID/password manually."
+            if input_data.mode == "patient-created"
+            else "Report approved, but backend email settings are not configured. Copy and send the access ID/password manually."
+        )
         return {
             "sent": False,
             "configured": False,
-            "message": "Report approved, but backend email settings are not configured. Copy and send the report ID/password manually.",
+            "message": fallback_message,
         }
 
     report_url = f"{FRONTEND_URL}/reports/check"
     message = EmailMessage()
-    message["Subject"] = "Your OCT report is ready"
+    message["Subject"] = (
+        "Your OCT report access details"
+        if input_data.mode == "patient-created"
+        else "Your OCT report is ready"
+    )
     message["From"] = f"{SMTP_FROM_NAME} <{SMTP_FROM_EMAIL}>"
     message["To"] = input_data.to_email
     message.set_content(
@@ -306,9 +333,13 @@ def send_report_access_email(input_data: ReportAccessEmailRequest):
             [
                 f"Hello {input_data.patient_name},",
                 "",
-                "Your OCT report has been reviewed and is ready to view.",
+                (
+                    "Your patient record has been created. Use the details below to check your OCT report status once your scan/report is completed."
+                    if input_data.mode == "patient-created"
+                    else "Your OCT report has been reviewed and is ready to view, download, and print."
+                ),
                 "",
-                f"Report access ID: {input_data.report_id}",
+                f"Access ID: {input_data.access_id}",
                 f"Access password: {input_data.password}",
                 f"Open: {report_url}",
                 "",
@@ -329,7 +360,11 @@ def send_report_access_email(input_data: ReportAccessEmailRequest):
     return {
         "sent": True,
         "configured": True,
-        "message": "Report approved and access email sent to the patient.",
+        "message": (
+            "Patient saved and access email sent."
+            if input_data.mode == "patient-created"
+            else "Report approved and ready email sent to the patient."
+        ),
     }
 
 

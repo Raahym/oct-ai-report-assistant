@@ -27,7 +27,7 @@ import { predictOCT } from "@/lib/ai-api";
 import { useDemoStore } from "@/lib/demo-store";
 import { getFeedbackEntries, submitFeedback, updateFeedbackStatus } from "@/lib/feedback";
 import { downloadReportPdf } from "@/lib/pdf";
-import { checkPublicReport, getReportAccessPassword, sendReportAccessEmail, type PublicReportResult } from "@/lib/report-access";
+import { checkPublicReport, getPatientAccessPassword, sendReportAccessEmail, type PublicReportResult } from "@/lib/report-access";
 import { reportTemplates } from "@/lib/report-templates";
 import type { DiseaseClass, EyeSide, FeedbackEntry, Gender, Patient, Report, Role } from "@/lib/types";
 
@@ -379,9 +379,10 @@ export function DashboardView() {
 }
 
 export function NewPatientView() {
-  const router = useRouter();
   const store = useDemoStore();
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [createdPatient, setCreatedPatient] = useState<Patient | null>(null);
   const [form, setForm] = useState({
     patientCode: `MCS-OCT-${String(store.data.patients.length + 1).padStart(4, "0")}`,
     fullName: "",
@@ -397,13 +398,27 @@ export function NewPatientView() {
 
   const submit = async () => {
     setError("");
+    setSuccess("");
     if (!form.patientCode || !form.fullName || !form.age || !form.gender) {
       setError("Please enter patient ID, name, age, and gender.");
       return;
     }
     try {
       const patient = await store.createPatient({ ...form, age: Number(form.age) });
-      router.push(`/patients/${patient.id}`);
+      const password = getPatientAccessPassword(patient);
+      if (patient.email) {
+        const result = await sendReportAccessEmail({
+          toEmail: patient.email,
+          patientName: patient.fullName,
+          accessId: patient.patientCode,
+          password,
+          mode: "patient-created"
+        });
+        setSuccess(result.message);
+      } else {
+        setSuccess(`Patient saved. No email was entered, so share Access ID ${patient.patientCode} and password ${password} manually.`);
+      }
+      setCreatedPatient(patient);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create patient.");
     }
@@ -431,7 +446,23 @@ export function NewPatientView() {
           <Textarea label="Clinical notes" value={form.clinicalNotes} onChange={(value) => setForm({ ...form, clinicalNotes: value })} />
         </div>
         {error ? <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
-        <div className="mt-5 flex justify-end">
+        {success ? (
+          <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
+            <p>{success}</p>
+            {createdPatient ? (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <Info label="Access ID" value={createdPatient.patientCode} />
+                <Info label="Password" value={getPatientAccessPassword(createdPatient)} />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+          {createdPatient ? (
+            <Link href={`/patients/${createdPatient.id}`}>
+              <Button className="w-full sm:w-auto" variant="secondary">Open Patient</Button>
+            </Link>
+          ) : null}
           <Button className="w-full sm:w-auto" onClick={submit}>
             <Save size={16} />
             Save Patient
@@ -466,11 +497,76 @@ export function SearchPatientsView() {
 }
 
 export function PatientProfileView({ id }: { id: string }) {
+  const router = useRouter();
   const store = useDemoStore();
   const patient = store.data.patients.find((item) => item.id === id);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState("");
+  const [form, setForm] = useState({
+    patientCode: patient?.patientCode ?? "",
+    fullName: patient?.fullName ?? "",
+    age: patient ? String(patient.age) : "",
+    gender: patient?.gender ?? "Female" as Gender,
+    phone: patient?.phone ?? "",
+    email: patient?.email ?? "",
+    address: patient?.address ?? "",
+    diabetesHistory: patient?.diabetesHistory ?? "Unknown" as Patient["diabetesHistory"],
+    previousEyeDisease: patient?.previousEyeDisease ?? "",
+    clinicalNotes: patient?.clinicalNotes ?? ""
+  });
+
+  useEffect(() => {
+    if (!patient) return;
+    setForm({
+      patientCode: patient.patientCode,
+      fullName: patient.fullName,
+      age: String(patient.age),
+      gender: patient.gender,
+      phone: patient.phone ?? "",
+      email: patient.email ?? "",
+      address: patient.address ?? "",
+      diabetesHistory: patient.diabetesHistory,
+      previousEyeDisease: patient.previousEyeDisease ?? "",
+      clinicalNotes: patient.clinicalNotes ?? ""
+    });
+  }, [patient?.id, patient?.updatedAt]);
+
   if (!patient) return <Missing title="Patient not found" href="/patients/search" label="Back to search" />;
   const scans = store.data.scans.filter((scan) => scan.patientId === patient.id);
   const reports = store.data.reports.filter((report) => report.patientId === patient.id);
+  const accessPassword = getPatientAccessPassword(patient);
+
+  const savePatient = async () => {
+    setError("");
+    setSaved("");
+    setSaving(true);
+    try {
+      await store.updatePatient(patient.id, { ...form, age: Number(form.age) });
+      setEditing(false);
+      setSaved("Patient details updated.");
+      window.setTimeout(() => setSaved(""), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update patient.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deletePatient = async () => {
+    if (!window.confirm("Delete this patient and linked scans/reports?")) return;
+    setError("");
+    setDeleting(true);
+    try {
+      await store.deletePatient(patient.id);
+      router.push("/patients/search");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete patient.");
+      setDeleting(false);
+    }
+  };
 
   return (
     <>
@@ -478,21 +574,62 @@ export function PatientProfileView({ id }: { id: string }) {
         title={patient.fullName}
         subtitle={`${patient.patientCode} | ${patient.age} years | ${patient.gender}`}
         action={
-          <Link href={`/scans/upload?patient=${patient.id}`} className="block">
-            <Button className="w-full">
-              <Upload size={16} />
-              Upload New OCT Scan
+          <div className="grid gap-2 sm:flex">
+            <Button className="w-full sm:w-auto" variant="secondary" onClick={() => setEditing((value) => !value)}>
+              {editing ? "Cancel Edit" : "Edit Patient"}
             </Button>
-          </Link>
+            <Button className="w-full sm:w-auto" variant="danger" disabled={deleting} onClick={deletePatient}>
+              {deleting ? <Loader2 className="animate-spin" size={16} /> : null}
+              Delete Patient
+            </Button>
+            <Link href={`/scans/upload?patient=${patient.id}`} className="block">
+              <Button className="w-full">
+                <Upload size={16} />
+                Upload New OCT Scan
+              </Button>
+            </Link>
+          </div>
         }
       />
       <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
         <Card className="p-5">
           <h3 className="font-black text-slate-950">Patient Information</h3>
-          <Info label="Phone" value={patient.phone || "Not provided"} />
-          <Info label="Diabetes history" value={patient.diabetesHistory} />
-          <Info label="Previous eye disease" value={patient.previousEyeDisease || "None noted"} />
-          <Info label="Clinical notes" value={patient.clinicalNotes || "No notes"} />
+          {!editing ? (
+            <>
+              <Info label="Email" value={patient.email || "Not provided"} />
+              <Info label="Phone" value={patient.phone || "Not provided"} />
+              <Info label="Address" value={patient.address || "Not provided"} />
+              <Info label="Diabetes history" value={patient.diabetesHistory} />
+              <Info label="Previous eye disease" value={patient.previousEyeDisease || "None noted"} />
+              <Info label="Doctor notes" value={patient.clinicalNotes || "No notes"} />
+              <Info label="Access ID" value={patient.patientCode} />
+              <Info label="Access password" value={accessPassword} />
+            </>
+          ) : (
+            <div className="mt-4 grid gap-4">
+              <Field label="Patient ID / MR Number" value={form.patientCode} onChange={(value) => setForm({ ...form, patientCode: value })} />
+              <Field label="Full name" value={form.fullName} onChange={(value) => setForm({ ...form, fullName: value })} />
+              <Field label="Age" type="number" value={form.age} onChange={(value) => setForm({ ...form, age: value })} />
+              <SelectField label="Gender" value={form.gender} options={["Female", "Male", "Other"]} onChange={(value) => setForm({ ...form, gender: value as Gender })} />
+              <Field label="Phone number" value={form.phone} onChange={(value) => setForm({ ...form, phone: value })} />
+              <Field label="Email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
+              <Field label="Address" value={form.address} onChange={(value) => setForm({ ...form, address: value })} />
+              <SelectField
+                label="Diabetes history"
+                value={form.diabetesHistory}
+                options={["Yes", "No", "Unknown"]}
+                onChange={(value) => setForm({ ...form, diabetesHistory: value as Patient["diabetesHistory"] })}
+              />
+              <Field label="Previous eye disease" value={form.previousEyeDisease} onChange={(value) => setForm({ ...form, previousEyeDisease: value })} />
+              <Textarea label="Doctor notes" value={form.clinicalNotes} onChange={(value) => setForm({ ...form, clinicalNotes: value })} />
+              <Button onClick={savePatient} disabled={saving}>
+                {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                Save Changes
+              </Button>
+            </div>
+          )}
+          {error ? <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
+          {saved ? <p className="mt-4 rounded-md bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">{saved}</p> : null}
         </Card>
         <Card>
           <CardHeader title="Uploaded Scans" subtitle="Each scan links to the AI analysis page." />
@@ -747,21 +884,22 @@ export function ReportEditorView({ id }: { id: string }) {
     setAccessMessage("");
     try {
       const approved = await store.approveReport(draft);
-      const accessPassword = getReportAccessPassword(approved);
+      const accessPassword = patient ? getPatientAccessPassword(patient) : "";
       try {
-        if (patient?.email) {
+        if (patient?.email && accessPassword) {
           const emailResult = await sendReportAccessEmail({
             toEmail: patient.email,
             patientName: patient.fullName,
-            reportId: approved.id,
-            password: accessPassword
+            accessId: patient.patientCode,
+            password: accessPassword,
+            mode: "report-ready"
           });
           setAccessMessage(emailResult.message);
         } else {
-          setAccessMessage(`No patient email saved. Share Report ID ${approved.id} and password ${accessPassword} manually.`);
+          setAccessMessage(`No patient email saved. Share Access ID ${patient?.patientCode ?? "-"} and password ${accessPassword || "-"} manually.`);
         }
       } catch {
-        setAccessMessage(`Report approved. Email could not be sent automatically. Share Report ID ${approved.id} and password ${accessPassword} manually.`);
+        setAccessMessage(`Report approved. Email could not be sent automatically. Share Access ID ${patient?.patientCode ?? "-"} and password ${accessPassword || "-"} manually.`);
       }
       router.push(`/reports/${approved.id}/view`);
     } catch (err) {
@@ -775,8 +913,8 @@ export function ReportEditorView({ id }: { id: string }) {
       <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
         <Card className="p-5">
           {patient ? <Info label="Patient" value={`${patient.patientCode} - ${patient.fullName}`} /> : null}
-          <Info label="Report access ID" value={draft.id} />
-          <Info label="Access password" value={getReportAccessPassword(draft)} />
+          {patient ? <Info label="Patient access ID" value={patient.patientCode} /> : null}
+          {patient ? <Info label="Access password" value={getPatientAccessPassword(patient)} /> : null}
           {ai ? (
             <>
               <Info label="AI prediction" value={`${ai.predictedClass} (${Math.round(ai.confidence * 100)}%)`} />
@@ -859,8 +997,8 @@ export function ReportView({ id }: { id: string }) {
           <div>
             {scan ? <img src={scan.imageUrl} alt="OCT scan" className="aspect-[4/3] w-full rounded-md object-cover" /> : null}
             <div className="mt-4 space-y-3">
-              <Info label="Report access ID" value={report.id} />
-              <Info label="Access password" value={getReportAccessPassword(report)} />
+              {patient ? <Info label="Patient access ID" value={patient.patientCode} /> : null}
+              {patient ? <Info label="Access password" value={getPatientAccessPassword(patient)} /> : null}
               {patient ? <Info label="Patient" value={`${patient.patientCode} - ${patient.fullName}`} /> : null}
               {ai ? <Info label="AI prediction" value={`${ai.predictedClass} (${Math.round(ai.confidence * 100)}%)`} /> : null}
               <Info label="Approved by" value={approver?.fullName ?? "Not approved"} />
@@ -906,33 +1044,35 @@ export function ReportHistoryView() {
 
 export function PatientReportCheckView() {
   const store = useDemoStore();
-  const [reportId, setReportId] = useState("");
+  const [accessId, setAccessId] = useState("");
   const [password, setPassword] = useState("");
   const [publicResult, setPublicResult] = useState<PublicReportResult | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState("");
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const normalizedReportId = reportId.trim().toLowerCase();
+  const normalizedAccessId = accessId.trim().toLowerCase();
   const normalizedPassword = password.trim();
   const match = useMemo(() => {
-    if (!normalizedReportId || !normalizedPassword) return null;
-    return store.data.reports.find((report) => {
-      return report.id.toLowerCase() === normalizedReportId && getReportAccessPassword(report) === normalizedPassword;
-    }) ?? null;
-  }, [normalizedPassword, normalizedReportId, store.data.reports]);
-  const patient = match ? store.data.patients.find((item) => item.id === match.patientId) : null;
+    if (!normalizedAccessId || !normalizedPassword) return null;
+    const patient = store.data.patients.find((item) => item.patientCode.toLowerCase() === normalizedAccessId);
+    if (!patient || getPatientAccessPassword(patient) !== normalizedPassword) return null;
+    return store.data.reports.find((report) => report.patientId === patient.id && report.status === "approved") ??
+      store.data.reports.find((report) => report.patientId === patient.id) ??
+      null;
+  }, [normalizedPassword, normalizedAccessId, store.data.patients, store.data.reports]);
+  const patient = match ? store.data.patients.find((item) => item.id === match.patientId) : store.data.patients.find((item) => item.patientCode.toLowerCase() === normalizedAccessId);
   const ai = match ? store.data.aiResults.find((item) => item.id === match.aiResultId) : null;
   const publicReport = publicResult?.report;
 
   const checkReport = async () => {
     setCheckError("");
     setPublicResult(null);
-    if (!reportId.trim() || !password.trim()) return;
+    if (!accessId.trim() || !password.trim()) return;
     if (match) return;
 
     setChecking(true);
     try {
-      const result = await checkPublicReport(reportId.trim(), password.trim());
+      const result = await checkPublicReport(accessId.trim(), password.trim());
       setPublicResult(result);
     } catch (err) {
       setCheckError(err instanceof Error ? err.message : "Could not check report.");
@@ -945,7 +1085,7 @@ export function PatientReportCheckView() {
     <>
       <PageTitle
         title="Check Report"
-        subtitle="Enter the report access ID and generated password sent by the clinic. Reports open only after doctor approval."
+        subtitle="Enter the patient access ID and generated password sent by the clinic. Reports open only after doctor approval."
         action={
           <Button variant="secondary" onClick={() => setFeedbackOpen(true)}>
             <MessageSquare size={16} />
@@ -956,9 +1096,9 @@ export function PatientReportCheckView() {
       <div className="grid gap-5 lg:grid-cols-[420px_1fr]">
         <Card className="p-5">
           <div className="grid gap-4">
-            <Field label="Report access ID" value={reportId} onChange={setReportId} />
+            <Field label="Patient access ID" value={accessId} onChange={setAccessId} />
             <Field label="Access password" value={password} onChange={setPassword} />
-            <Button onClick={checkReport} disabled={checking || !reportId.trim() || !password.trim()}>
+            <Button onClick={checkReport} disabled={checking || !accessId.trim() || !password.trim()}>
               {checking ? <Loader2 className="animate-spin" size={16} /> : <Search size={16} />}
               Check Report
             </Button>
@@ -975,7 +1115,7 @@ export function PatientReportCheckView() {
         <Card className="p-5">
           {checkError ? (
             <p className="rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{checkError}</p>
-          ) : !reportId || !password ? (
+          ) : !accessId || !password ? (
             <EmptyState title="Enter report details" body="The result will appear here after both fields are filled." />
           ) : !match && !publicResult ? (
             <EmptyState title="Ready to check" body="Press Check Report to verify the access ID and password." />
@@ -1047,7 +1187,7 @@ export function PatientReportCheckView() {
           )}
         </Card>
       </div>
-      {feedbackOpen ? <FeedbackDialog reportId={reportId} onClose={() => setFeedbackOpen(false)} /> : null}
+      {feedbackOpen ? <FeedbackDialog patientCode={accessId} onClose={() => setFeedbackOpen(false)} /> : null}
     </>
   );
 }
@@ -1351,10 +1491,10 @@ function ReportRows({ reports }: { reports: Report[] }) {
               <p className="text-sm text-slate-500">{patient?.patientCode} | AI: {ai?.predictedClass ?? "-"}</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <code className="rounded bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">{report.id}</code>
-                <code className="rounded bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-800">{getReportAccessPassword(report)}</code>
+                {patient ? <code className="rounded bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-800">{getPatientAccessPassword(patient)}</code> : null}
                 <button
                   className="inline-flex items-center gap-1 text-xs font-bold text-clinic-700"
-                  onClick={() => void navigator.clipboard?.writeText(`Report ID: ${report.id}\nPassword: ${getReportAccessPassword(report)}`)}
+                  onClick={() => void navigator.clipboard?.writeText(`Patient access ID: ${patient?.patientCode ?? "-"}\nPassword: ${patient ? getPatientAccessPassword(patient) : "-"}`)}
                 >
                   <Copy size={13} />
                   Copy Access

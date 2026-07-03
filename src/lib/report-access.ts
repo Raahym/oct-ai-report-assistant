@@ -1,4 +1,4 @@
-import type { DiseaseClass, Report } from "./types";
+import type { DiseaseClass, Patient, Report } from "./types";
 
 const ACCESS_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 
@@ -13,6 +13,16 @@ function fnv1a(seed: string) {
 
 export function getReportAccessPassword(report: Pick<Report, "id" | "createdAt">) {
   let value = fnv1a(`${report.id}:${report.createdAt}`);
+  let password = "";
+  for (let index = 0; index < 7; index += 1) {
+    value = (Math.imul(value, 1664525) + 1013904223) >>> 0;
+    password += ACCESS_ALPHABET[value % ACCESS_ALPHABET.length];
+  }
+  return password;
+}
+
+export function getPatientAccessPassword(patient: Pick<Patient, "id" | "createdAt">) {
+  let value = fnv1a(`${patient.id}:${patient.createdAt}`);
   let password = "";
   for (let index = 0; index < 7; index += 1) {
     value = (Math.imul(value, 1664525) + 1013904223) >>> 0;
@@ -54,7 +64,7 @@ export async function checkPublicReport(reportId: string, password: string): Pro
   const response = await fetch(`${backendBaseUrl()}/reports/check`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ report_id: reportId, password })
+    body: JSON.stringify({ access_id: reportId, password })
   });
 
   if (!response.ok) {
@@ -74,8 +84,9 @@ export async function checkPublicReport(reportId: string, password: string): Pro
 export async function sendReportAccessEmail(input: {
   toEmail: string;
   patientName: string;
-  reportId: string;
+  accessId: string;
   password: string;
+  mode: "patient-created" | "report-ready";
 }) {
   const response = await fetch(`${backendBaseUrl()}/reports/send-access-email`, {
     method: "POST",
@@ -83,8 +94,9 @@ export async function sendReportAccessEmail(input: {
     body: JSON.stringify({
       to_email: input.toEmail,
       patient_name: input.patientName,
-      report_id: input.reportId,
-      password: input.password
+      access_id: input.accessId,
+      password: input.password,
+      mode: input.mode
     })
   });
 

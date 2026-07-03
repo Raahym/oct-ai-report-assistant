@@ -108,6 +108,8 @@ alter table audit_logs enable row level security;
 create policy "authenticated read profiles" on profiles for select to authenticated using (true);
 create policy "authenticated read patients" on patients for select to authenticated using (true);
 create policy "authenticated insert patients" on patients for insert to authenticated with check (true);
+create policy "authenticated update patients" on patients for update to authenticated using (true) with check (true);
+create policy "authenticated delete patients" on patients for delete to authenticated using (true);
 create policy "authenticated read scans" on scans for select to authenticated using (true);
 create policy "authenticated insert scans" on scans for insert to authenticated with check (true);
 create policy "authenticated read ai results" on ai_results for select to authenticated using (true);
