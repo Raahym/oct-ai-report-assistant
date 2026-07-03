@@ -14,7 +14,6 @@ import {
   Loader2,
   MessageSquare,
   Plus,
-  Printer,
   RotateCcw,
   Save,
   Search,
@@ -26,12 +25,28 @@ import { Button, Card, CardHeader, EmptyState, SafetyNotice, StatusBadge } from 
 import { predictOCT } from "@/lib/ai-api";
 import { useDemoStore } from "@/lib/demo-store";
 import { getFeedbackEntries, submitFeedback, updateFeedbackStatus } from "@/lib/feedback";
-import { downloadReportPdf } from "@/lib/pdf";
+import { downloadPublicReportPdf, downloadReportPdf } from "@/lib/pdf";
 import { checkPublicReport, getPatientAccessPassword, sendReportAccessEmail, type PublicReportResult } from "@/lib/report-access";
 import { reportTemplates } from "@/lib/report-templates";
 import type { DiseaseClass, EyeSide, FeedbackEntry, Gender, Patient, Report, Role } from "@/lib/types";
 
 const diseaseClasses: DiseaseClass[] = ["CNV", "DME", "DRUSEN", "NORMAL"];
+
+const MIN_PATIENT_AGE = 0;
+const MAX_PATIENT_AGE = 130;
+
+function isValidPatientAge(value: string) {
+  if (value.trim() === "") return false;
+  const age = Number(value);
+  return Number.isInteger(age) && age >= MIN_PATIENT_AGE && age <= MAX_PATIENT_AGE;
+}
+
+function cleanAgeInput(value: string) {
+  if (value === "") return "";
+  const numeric = value.replace(/[^\d]/g, "");
+  if (!numeric) return "";
+  return String(Math.min(MAX_PATIENT_AGE, Number(numeric)));
+}
 
 export function LoginView() {
   const router = useRouter();
@@ -336,12 +351,14 @@ export function DashboardView() {
                 Upload OCT
               </Button>
             </Link>
-            <Link href="/reports/check" className="block">
-              <Button className="w-full" variant="secondary">
-                <ClipboardCheck size={16} />
-                Check Report
-              </Button>
-            </Link>
+            {store.currentUser.role !== "admin" ? (
+              <Link href="/reports/check" className="block">
+                <Button className="w-full" variant="secondary">
+                  <ClipboardCheck size={16} />
+                  Check Report
+                </Button>
+              </Link>
+            ) : null}
           </div>
         }
       />
@@ -403,6 +420,10 @@ export function NewPatientView() {
       setError("Please enter patient ID, name, age, and gender.");
       return;
     }
+    if (!isValidPatientAge(form.age)) {
+      setError("Please enter a valid age from 0 to 130.");
+      return;
+    }
     try {
       const patient = await store.createPatient({ ...form, age: Number(form.age) });
       const password = getPatientAccessPassword(patient);
@@ -431,7 +452,7 @@ export function NewPatientView() {
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Patient ID / MR Number" value={form.patientCode} onChange={(value) => setForm({ ...form, patientCode: value })} />
           <Field label="Full name" value={form.fullName} onChange={(value) => setForm({ ...form, fullName: value })} />
-          <Field label="Age" type="number" value={form.age} onChange={(value) => setForm({ ...form, age: value })} />
+          <Field label="Age" type="number" min={MIN_PATIENT_AGE} max={MAX_PATIENT_AGE} value={form.age} onChange={(value) => setForm({ ...form, age: cleanAgeInput(value) })} />
           <SelectField label="Gender" value={form.gender} options={["Female", "Male", "Other"]} onChange={(value) => setForm({ ...form, gender: value as Gender })} />
           <Field label="Phone number" value={form.phone} onChange={(value) => setForm({ ...form, phone: value })} />
           <Field label="Email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
@@ -542,6 +563,10 @@ export function PatientProfileView({ id }: { id: string }) {
   const savePatient = async () => {
     setError("");
     setSaved("");
+    if (!isValidPatientAge(form.age)) {
+      setError("Please enter a valid age from 0 to 130.");
+      return;
+    }
     setSaving(true);
     try {
       await store.updatePatient(patient.id, { ...form, age: Number(form.age) });
@@ -609,7 +634,7 @@ export function PatientProfileView({ id }: { id: string }) {
             <div className="mt-4 grid gap-4">
               <Field label="Patient ID / MR Number" value={form.patientCode} onChange={(value) => setForm({ ...form, patientCode: value })} />
               <Field label="Full name" value={form.fullName} onChange={(value) => setForm({ ...form, fullName: value })} />
-              <Field label="Age" type="number" value={form.age} onChange={(value) => setForm({ ...form, age: value })} />
+              <Field label="Age" type="number" min={MIN_PATIENT_AGE} max={MAX_PATIENT_AGE} value={form.age} onChange={(value) => setForm({ ...form, age: cleanAgeInput(value) })} />
               <SelectField label="Gender" value={form.gender} options={["Female", "Male", "Other"]} onChange={(value) => setForm({ ...form, gender: value as Gender })} />
               <Field label="Phone number" value={form.phone} onChange={(value) => setForm({ ...form, phone: value })} />
               <Field label="Email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
@@ -973,13 +998,9 @@ export function ReportView({ id }: { id: string }) {
         action={
           patient && scan && ai ? (
             <div className="grid gap-2 sm:flex">
-              <Button className="w-full sm:w-auto" variant="secondary" onClick={() => window.print()}>
-                <Printer size={16} />
-                Print
-              </Button>
-              <Button className="w-full sm:w-auto" onClick={() => downloadReportPdf({ patient, scan, aiResult: ai, report, approver })}>
-                <Download size={16} />
-                Download PDF
+            <Button className="w-full sm:w-auto" onClick={() => downloadReportPdf({ patient, scan, aiResult: ai, report, approver })}>
+              <Download size={16} />
+              Download PDF
               </Button>
             </div>
           ) : null
@@ -1025,7 +1046,7 @@ export function ReportHistoryView() {
   const reports = store.data.reports.filter((report) => {
     const patient = store.data.patients.find((item) => item.id === report.patientId);
     const ai = store.data.aiResults.find((item) => item.id === report.aiResultId);
-    return `${report.id} ${patient?.patientCode} ${patient?.fullName} ${report.status} ${ai?.predictedClass} ${report.finalDiagnosis}`
+    return `${patient?.patientCode} ${patient?.fullName} ${report.status} ${ai?.predictedClass} ${report.finalDiagnosis}`
       .toLowerCase()
       .includes(query.toLowerCase());
   });
@@ -1033,7 +1054,7 @@ export function ReportHistoryView() {
     <>
       <PageTitle title="Report History" subtitle="Search by patient ID, name, status, AI prediction, or final diagnosis." />
       <Card className="p-5">
-        <input className="field" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search report ID, patient ID, name, status, or diagnosis..." />
+        <input className="field" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search patient ID, name, status, or diagnosis..." />
       </Card>
       <Card className="mt-5">
         <ReportRows reports={reports} />
@@ -1108,7 +1129,7 @@ export function PatientReportCheckView() {
             <div className="mt-3 space-y-3 text-sm font-semibold text-slate-600">
               <p>1. Clinic creates and reviews the OCT report.</p>
               <p>2. Customer receives report ID with a password like Xisn12H.</p>
-              <p>3. Approved reports can be viewed, downloaded, and printed.</p>
+              <p>3. Approved reports can be viewed and downloaded as the official PDF.</p>
             </div>
           </div>
         </Card>
@@ -1145,7 +1166,6 @@ export function PatientReportCheckView() {
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 <Info label="AI prediction" value={publicReport.predictedClass ? `${publicReport.predictedClass} (${Math.round((publicReport.confidence ?? 0) * 100)}%)` : "-"} />
                 <Info label="Approved at" value={publicReport.approvedAt ? new Date(publicReport.approvedAt).toLocaleString() : "-"} />
-                <Info label="Report ID" value={publicReport.id} />
                 <Info label="Patient ID" value={publicReport.patientCode} />
               </div>
               <div className="mt-5 space-y-4">
@@ -1155,9 +1175,9 @@ export function PatientReportCheckView() {
                 <ReportSection title="Doctor Notes" body={publicReport.doctorNotes || "No additional notes."} />
                 <ReportSection title="Final Diagnosis" body={publicReport.finalDiagnosis} />
               </div>
-              <Button className="mt-5" variant="secondary" onClick={() => window.print()}>
-                <Printer size={16} />
-                Print
+              <Button className="mt-5" variant="secondary" onClick={() => downloadPublicReportPdf(publicReport)}>
+                <Download size={16} />
+                Download PDF
               </Button>
             </div>
           ) : match ? (
@@ -1178,7 +1198,6 @@ export function PatientReportCheckView() {
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 <Info label="AI prediction" value={ai ? `${ai.predictedClass} (${Math.round(ai.confidence * 100)}%)` : "-"} />
                 <Info label="Approved at" value={match.approvedAt ? new Date(match.approvedAt).toLocaleString() : "-"} />
-                <Info label="Report ID" value={match.id} />
                 <Info label="Patient ID" value={patient?.patientCode ?? "-"} />
               </div>
             </div>
@@ -1213,20 +1232,20 @@ export function FeedbackReviewView({ scope = "admin" }: { scope?: "admin" | "hod
     <>
       <PageTitle
         title="Feedback Inbox"
-        subtitle="Review customer complaints, feedback, and reports waiting for admin approval."
+        subtitle="Review customer complaints and feedback submitted from the patient access screens."
       />
-      <div className="mb-5 grid gap-3 lg:grid-cols-3">
+      <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <Card className="p-5">
           <p className="text-sm font-semibold text-slate-500">New feedback</p>
           <p className="mt-2 text-3xl font-black text-slate-950">{entries.filter((entry) => entry.status === "new").length}</p>
         </Card>
         <Card className="p-5">
-          <p className="text-sm font-semibold text-slate-500">Pending reports</p>
-          <p className="mt-2 text-3xl font-black text-slate-950">{store.data.reports.filter((report) => report.status !== "approved").length}</p>
+          <p className="text-sm font-semibold text-slate-500">Reviewing</p>
+          <p className="mt-2 text-3xl font-black text-slate-950">{entries.filter((entry) => entry.status === "reviewing").length}</p>
         </Card>
         <Card className="p-5">
-          <p className="text-sm font-semibold text-slate-500">Approved reports</p>
-          <p className="mt-2 text-3xl font-black text-slate-950">{store.data.reports.filter((report) => report.status === "approved").length}</p>
+          <p className="text-sm font-semibold text-slate-500">Resolved</p>
+          <p className="mt-2 text-3xl font-black text-slate-950">{entries.filter((entry) => entry.status === "resolved").length}</p>
         </Card>
       </div>
       <Card className="p-5">
@@ -1269,10 +1288,6 @@ export function FeedbackReviewView({ scope = "admin" }: { scope?: "admin" | "hod
         ))}
         {visible.length === 0 ? <EmptyState title="No feedback found" body="Submitted feedback and complaints will appear here for admin and HOD review." /> : null}
       </div>
-      <Card className="mt-5">
-        <CardHeader title="Reports awaiting approval" subtitle="Admin/HOD reviewers can open drafts and approve them after checking clinical language." />
-        <ReportRows reports={store.data.reports.filter((report) => report.status !== "approved")} />
-      </Card>
     </>
   );
 }
@@ -1490,7 +1505,6 @@ function ReportRows({ reports }: { reports: Report[] }) {
               <p className="font-bold text-slate-900">{patient?.fullName ?? "Unknown patient"}</p>
               <p className="text-sm text-slate-500">{patient?.patientCode} | AI: {ai?.predictedClass ?? "-"}</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <code className="rounded bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">{report.id}</code>
                 {patient ? <code className="rounded bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-800">{getPatientAccessPassword(patient)}</code> : null}
                 <button
                   className="inline-flex items-center gap-1 text-xs font-bold text-clinic-700"
@@ -1610,8 +1624,10 @@ function FeedbackDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6">
-      <Card className="max-h-[92vh] w-full max-w-xl overflow-auto p-5">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/45 px-3 py-5 sm:px-4" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <Card className="mx-auto my-4 max-h-none w-full max-w-xl p-5 sm:my-8">
         {!registeredId ? (
           <>
             <div className="flex items-start justify-between gap-4">
@@ -1621,7 +1637,7 @@ function FeedbackDialog({
               </div>
               <Button variant="ghost" onClick={onClose}>Close</Button>
             </div>
-            <div className="mt-5 grid gap-4">
+            <div className="mt-5 grid gap-4 pb-2">
               <SelectField
                 label="Type"
                 value={form.type}
@@ -1638,8 +1654,8 @@ function FeedbackDialog({
                 <Field label="Patient ID optional" value={form.patientCode} onChange={(value) => setForm({ ...form, patientCode: value })} />
                 <Field label="Report ID optional" value={form.reportId} onChange={(value) => setForm({ ...form, reportId: value })} />
               </div>
-              <Textarea label="Message" value={form.message} onChange={(value) => setForm({ ...form, message: value })} />
-              <Button onClick={submit} disabled={!form.name || !form.message}>
+              <Textarea label="Message" minRowsClass="min-h-40" value={form.message} onChange={(value) => setForm({ ...form, message: value })} />
+              <Button className="w-full" onClick={submit} disabled={!form.name || !form.message}>
                 <Inbox size={16} />
                 Register
               </Button>
@@ -1658,11 +1674,25 @@ function FeedbackDialog({
   );
 }
 
-function Field({ label, value, onChange, type = "text" }: { label: string; value: string; type?: string; onChange: (value: string) => void }) {
+function Field({
+  label,
+  value,
+  onChange,
+  type = "text",
+  min,
+  max
+}: {
+  label: string;
+  value: string;
+  type?: string;
+  min?: number;
+  max?: number;
+  onChange: (value: string) => void;
+}) {
   return (
     <label className="block">
       <span className="label">{label}</span>
-      <input className="field mt-1" type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+      <input className="field mt-1" type={type} min={min} max={max} value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
@@ -1694,11 +1724,21 @@ function SelectField({
   );
 }
 
-function Textarea({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function Textarea({
+  label,
+  value,
+  onChange,
+  minRowsClass = "min-h-24"
+}: {
+  label: string;
+  value: string;
+  minRowsClass?: string;
+  onChange: (value: string) => void;
+}) {
   return (
     <label className="block md:col-span-2">
       <span className="label">{label}</span>
-      <textarea className="field mt-1 min-h-24 resize-y" value={value} onChange={(event) => onChange(event.target.value)} />
+      <textarea className={`field mt-1 ${minRowsClass} resize-y`} value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
