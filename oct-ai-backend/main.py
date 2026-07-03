@@ -1,4 +1,5 @@
 import os
+import json
 import smtplib
 import ssl
 import urllib.error
@@ -41,6 +42,9 @@ SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", SMTP_USERNAME)
 SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "OCT AI Report Assistant")
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", SMTP_FROM_EMAIL)
+RESEND_FROM_NAME = os.getenv("RESEND_FROM_NAME", SMTP_FROM_NAME)
 ACCESS_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
 
 app = FastAPI(title="OCT AI Backend", version=MODEL_VERSION)
@@ -214,6 +218,14 @@ def smtp_configured() -> bool:
     return bool(SMTP_HOST and SMTP_PORT and SMTP_USERNAME and SMTP_PASSWORD and SMTP_FROM_EMAIL)
 
 
+def resend_configured() -> bool:
+    return bool(RESEND_API_KEY and RESEND_FROM_EMAIL)
+
+
+def email_configured() -> bool:
+    return resend_configured() or smtp_configured()
+
+
 @app.get("/")
 def root():
     return {
@@ -307,7 +319,7 @@ def check_report_access(input_data: ReportCheckRequest):
 
 @app.post("/reports/send-access-email")
 def send_report_access_email(input_data: ReportAccessEmailRequest):
-    if not smtp_configured():
+    if not email_configured():
         fallback_message = (
             "Patient saved, but backend email settings are not configured. Copy and send the access ID/password manually."
             if input_data.mode == "patient-created"
@@ -320,33 +332,70 @@ def send_report_access_email(input_data: ReportAccessEmailRequest):
         }
 
     report_url = f"{FRONTEND_URL}/reports/check"
-    message = EmailMessage()
-    message["Subject"] = (
+    subject = (
         "Your OCT report access details"
         if input_data.mode == "patient-created"
         else "Your OCT report is ready"
     )
+    text_content = "\n".join(
+        [
+            f"Hello {input_data.patient_name},",
+            "",
+            (
+                "Your patient record has been created. Use the details below to check your OCT report status once your scan/report is completed."
+                if input_data.mode == "patient-created"
+                else "Your OCT report has been reviewed and is ready to view, download, and print."
+            ),
+            "",
+            f"Access ID: {input_data.access_id}",
+            f"Access password: {input_data.password}",
+            f"Open: {report_url}",
+            "",
+            "This report is AI-assisted and doctor reviewed. Please contact the clinic if you have questions.",
+        ]
+    )
+
+    if resend_configured():
+        payload = {
+            "from": f"{RESEND_FROM_NAME} <{RESEND_FROM_EMAIL}>",
+            "to": [input_data.to_email],
+            "subject": subject,
+            "text": text_content,
+        }
+        request = urllib.request.Request(
+            "https://api.resend.com/emails",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                response.read()
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise HTTPException(status_code=502, detail=f"Email sending failed: {detail}") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Email sending failed: {exc}") from exc
+
+        return {
+            "sent": True,
+            "configured": True,
+            "message": (
+                "Patient saved and access email sent."
+                if input_data.mode == "patient-created"
+                else "Report approved and ready email sent to the patient."
+            ),
+        }
+
+    message = EmailMessage()
+    message["Subject"] = subject
     message["From"] = f"{SMTP_FROM_NAME} <{SMTP_FROM_EMAIL}>"
     message["To"] = input_data.to_email
-    message.set_content(
-        "\n".join(
-            [
-                f"Hello {input_data.patient_name},",
-                "",
-                (
-                    "Your patient record has been created. Use the details below to check your OCT report status once your scan/report is completed."
-                    if input_data.mode == "patient-created"
-                    else "Your OCT report has been reviewed and is ready to view, download, and print."
-                ),
-                "",
-                f"Access ID: {input_data.access_id}",
-                f"Access password: {input_data.password}",
-                f"Open: {report_url}",
-                "",
-                "This report is AI-assisted and doctor reviewed. Please contact the clinic if you have questions.",
-            ]
-        )
-    )
+    message.set_content(text_content)
 
     try:
         context = ssl.create_default_context()
