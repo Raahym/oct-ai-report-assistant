@@ -235,6 +235,16 @@ def email_configured() -> bool:
     return resend_configured() or smtp_configured()
 
 
+def patient_safe_report_text(value: str) -> str:
+    return (
+        value.replace("AI-assisted classification suggests", "Doctor-reviewed results show")
+        .replace("AI-assisted Classification suggests", "Doctor-reviewed results show")
+        .replace("based on AI-assisted analysis", "after doctor review")
+        .replace("AI-assisted", "Doctor-reviewed")
+        .replace(" AI ", " doctor-reviewed analysis ")
+    )
+
+
 def send_plain_email(to_email: str, subject: str, text_content: str) -> None:
     if resend_configured():
         payload = {
@@ -364,10 +374,10 @@ def check_report_access(input_data: ReportCheckRequest):
                 "age": patient.get("age"),
                 "gender": patient.get("gender"),
                 "result": final_result,
-                "findings": report.get("findings") or "",
-                "impression": report.get("impression") or "",
-                "recommendation": report.get("recommendation") or "",
-                "doctorNotes": report.get("doctor_notes") or "",
+                "findings": patient_safe_report_text(report.get("findings") or ""),
+                "impression": patient_safe_report_text(report.get("impression") or ""),
+                "recommendation": patient_safe_report_text(report.get("recommendation") or ""),
+                "doctorNotes": patient_safe_report_text(report.get("doctor_notes") or ""),
                 "finalDiagnosis": final_result,
                 "approvedByName": approver.get("full_name") if approver else "",
                 "approvedAt": report.get("approved_at"),

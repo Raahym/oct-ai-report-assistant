@@ -5,6 +5,14 @@ import { finalReportDisclaimer, safetyDisclaimer } from "./report-templates";
 import type { AiResult, Patient, Profile, Report, Scan } from "./types";
 import type { PublicReportResult } from "./report-access";
 
+function patientSafeReportText(value: string) {
+  return value
+    .replace(/AI-assisted classification suggests/gi, "Doctor-reviewed results show")
+    .replace(/based on AI-assisted analysis/gi, "after doctor review")
+    .replace(/AI-assisted/g, "Doctor-reviewed")
+    .replace(/\bAI\b/g, "doctor-reviewed analysis");
+}
+
 export function downloadReportPdf(args: {
   patient: Patient;
   scan: Scan;
@@ -121,11 +129,11 @@ export function downloadPublicReportPdf(report: NonNullable<PublicReportResult["
 
   y += 58;
   const sections = [
-    ["Findings", report.findings],
-    ["Impression", report.impression],
-    ["Recommendation", report.recommendation],
-    ["Doctor Notes", report.doctorNotes || "No additional notes."],
-    ["Final Diagnosis", report.finalDiagnosis]
+    ["Findings", patientSafeReportText(report.findings)],
+    ["Impression", patientSafeReportText(report.impression)],
+    ["Recommendation", patientSafeReportText(report.recommendation)],
+    ["Doctor Notes", patientSafeReportText(report.doctorNotes || "No additional notes.")],
+    ["Final Diagnosis", report.result || report.finalDiagnosis]
   ];
 
   sections.forEach(([title, body]) => {

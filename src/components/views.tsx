@@ -53,6 +53,18 @@ function doctorDisplayName(name?: string) {
   return /^dr\.?\s/i.test(name) ? name : `Dr. ${name}`;
 }
 
+function patientSafeReportText(value: string) {
+  return value
+    .replace(/AI-assisted classification suggests/gi, "Doctor-reviewed results show")
+    .replace(/based on AI-assisted analysis/gi, "after doctor review")
+    .replace(/AI-assisted/g, "Doctor-reviewed")
+    .replace(/\bAI\b/g, "doctor-reviewed analysis");
+}
+
+function patientResult(result?: string, fallback?: string) {
+  return result && result !== "Needs clinical correlation" ? result : fallback && fallback !== "Needs clinical correlation" ? fallback : "-";
+}
+
 export function LoginView() {
   const router = useRouter();
   const store = useDemoStore();
@@ -1186,17 +1198,17 @@ export function PatientReportCheckView() {
               <h3 className="mt-3 text-xl font-black text-slate-950">Approved report found</h3>
               <p className="mt-1 text-sm text-slate-500">{publicReport.patientCode} - {publicReport.patientName}</p>
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <Info label="Results" value={publicReport.result || publicReport.finalDiagnosis || "-"} />
+                <Info label="Results" value={patientResult(publicReport.result, publicReport.finalDiagnosis)} />
                 <Info label="Approved by" value={doctorDisplayName(publicReport.approvedByName)} />
                 <Info label="Approved at" value={publicReport.approvedAt ? new Date(publicReport.approvedAt).toLocaleString() : "-"} />
                 <Info label="Patient ID" value={publicReport.patientCode} />
               </div>
               <div className="mt-5 space-y-4">
-                <ReportSection title="Findings" body={publicReport.findings} />
-                <ReportSection title="Impression" body={publicReport.impression} />
-                <ReportSection title="Recommendation" body={publicReport.recommendation} />
-                <ReportSection title="Doctor Notes" body={publicReport.doctorNotes || "No additional notes."} />
-                <ReportSection title="Final Diagnosis" body={publicReport.finalDiagnosis} />
+                <ReportSection title="Findings" body={patientSafeReportText(publicReport.findings)} />
+                <ReportSection title="Impression" body={patientSafeReportText(publicReport.impression)} />
+                <ReportSection title="Recommendation" body={patientSafeReportText(publicReport.recommendation)} />
+                <ReportSection title="Doctor Notes" body={patientSafeReportText(publicReport.doctorNotes || "No additional notes.")} />
+                <ReportSection title="Final Diagnosis" body={patientResult(publicReport.result, publicReport.finalDiagnosis)} />
               </div>
               <Button className="mt-5" variant="secondary" onClick={() => downloadPublicReportPdf(publicReport)}>
                 <Download size={16} />
@@ -1222,12 +1234,12 @@ export function PatientReportCheckView() {
                           patientName: patient.fullName,
                           age: patient.age,
                           gender: patient.gender,
-                          result: match.finalDiagnosis !== "Needs clinical correlation" ? match.finalDiagnosis : ai?.predictedClass ?? "-",
-                          findings: match.findings,
-                          impression: match.impression,
-                          recommendation: match.recommendation,
-                          doctorNotes: match.doctorNotes,
-                          finalDiagnosis: match.finalDiagnosis,
+                          result: patientResult(match.finalDiagnosis, ai?.predictedClass),
+                          findings: patientSafeReportText(match.findings),
+                          impression: patientSafeReportText(match.impression),
+                          recommendation: patientSafeReportText(match.recommendation),
+                          doctorNotes: patientSafeReportText(match.doctorNotes),
+                          finalDiagnosis: patientResult(match.finalDiagnosis, ai?.predictedClass),
                           approvedByName: doctorDisplayName(localApprover?.fullName),
                           approvedAt: match.approvedAt
                         })
@@ -1239,17 +1251,17 @@ export function PatientReportCheckView() {
                 </Button>
               </div>
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <Info label="Results" value={match.finalDiagnosis !== "Needs clinical correlation" ? match.finalDiagnosis : ai?.predictedClass ?? "-"} />
+                <Info label="Results" value={patientResult(match.finalDiagnosis, ai?.predictedClass)} />
                 <Info label="Approved by" value={doctorDisplayName(localApprover?.fullName)} />
                 <Info label="Approved at" value={match.approvedAt ? new Date(match.approvedAt).toLocaleString() : "-"} />
                 <Info label="Patient ID" value={patient?.patientCode ?? "-"} />
               </div>
               <div className="mt-5 space-y-4">
-                <ReportSection title="Findings" body={match.findings} />
-                <ReportSection title="Impression" body={match.impression} />
-                <ReportSection title="Recommendation" body={match.recommendation} />
-                <ReportSection title="Doctor Notes" body={match.doctorNotes || "No additional notes."} />
-                <ReportSection title="Final Diagnosis" body={match.finalDiagnosis} />
+                <ReportSection title="Findings" body={patientSafeReportText(match.findings)} />
+                <ReportSection title="Impression" body={patientSafeReportText(match.impression)} />
+                <ReportSection title="Recommendation" body={patientSafeReportText(match.recommendation)} />
+                <ReportSection title="Doctor Notes" body={patientSafeReportText(match.doctorNotes || "No additional notes.")} />
+                <ReportSection title="Final Diagnosis" body={patientResult(match.finalDiagnosis, ai?.predictedClass)} />
               </div>
             </div>
           ) : (
