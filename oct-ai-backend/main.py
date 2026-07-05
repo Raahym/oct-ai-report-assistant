@@ -22,7 +22,7 @@ from torchvision import models, transforms
 
 CLASSES = ["CNV", "DME", "DRUSEN", "NORMAL"]
 MODEL_NAME = "EfficientNet-B3"
-MODEL_VERSION = "v1.0"
+MODEL_VERSION = "v1.1"
 DISCLAIMER = "AI-assisted preliminary result. Requires doctor review."
 INVALID_IMAGE_DISCLAIMER = "This does not appear to be a valid OCT scan. Please upload an OCT image."
 LOW_CONFIDENCE_DISCLAIMER = "Uploaded image may not be a valid OCT scan or confidence is too low. Requires doctor review."
