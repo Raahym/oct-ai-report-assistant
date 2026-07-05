@@ -839,13 +839,36 @@ export function UploadScanView() {
 export function AnalysisView({ id }: { id: string }) {
   const router = useRouter();
   const store = useDemoStore();
+  const [analysisError, setAnalysisError] = useState("");
+  const [analysisLoading, setAnalysisLoading] = useState(false);
   const scan = store.data.scans.find((item) => item.id === id);
   if (!scan) return <Missing title="Scan not found" href="/dashboard" label="Back to dashboard" />;
   const patient = store.data.patients.find((item) => item.id === scan.patientId);
   const aiResult = store.data.aiResults.find((item) => item.scanId === scan.id);
 
+  const analyzeScan = async () => {
+    setAnalysisError("");
+    setAnalysisLoading(true);
+    try {
+      const response = await fetch(scan.imageUrl);
+      if (!response.ok) throw new Error("Could not reload the scan image for analysis.");
+      const blob = await response.blob();
+      const file = new File([blob], `${scan.id}.jpg`, { type: blob.type || "image/jpeg" });
+      const prepared = await prepareScanImages(file);
+      const prediction = await predictOCT(prepared.predictionFile);
+      const result = await store.saveBackendAnalysis(scan, prediction);
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "AI analysis failed.";
+      setAnalysisError(message);
+      throw err;
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
   const generate = async () => {
-    const result = aiResult ?? store.runAnalysis(scan);
+    const result = aiResult ?? (await analyzeScan());
     const report = await store.createReport(scan, result);
     if (patient?.email) {
       try {
@@ -885,6 +908,7 @@ export function AnalysisView({ id }: { id: string }) {
             <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">EfficientNet-B3</span>
           </div>
           <SafetyNotice />
+          {analysisError ? <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{analysisError}</p> : null}
           {aiResult ? (
             <div className="mt-5 space-y-5">
               <div className="rounded-lg bg-slate-50 p-4">
@@ -900,9 +924,9 @@ export function AnalysisView({ id }: { id: string }) {
               <Info label="Model" value={`${aiResult.modelName} ${aiResult.modelVersion}`} />
               <Info label="Timestamp" value={new Date(aiResult.createdAt).toLocaleString()} />
               <div className="grid gap-2 sm:flex">
-                <Button className="w-full sm:w-auto" variant="secondary" onClick={() => store.runAnalysis(scan)}>
-                  <RotateCcw size={16} />
-                  Re-run Analysis
+                <Button className="w-full sm:w-auto" variant="secondary" onClick={analyzeScan} disabled={analysisLoading}>
+                  {analysisLoading ? <Loader2 className="animate-spin" size={16} /> : <RotateCcw size={16} />}
+                  {analysisLoading ? "Re-analyzing..." : "Re-run Analysis"}
                 </Button>
                 <Link href={`/patients/${scan.patientId}`} className="block">
                   <Button className="w-full sm:w-auto" variant="ghost">Back to Patient</Button>
@@ -912,8 +936,9 @@ export function AnalysisView({ id }: { id: string }) {
           ) : (
             <div className="mt-5">
               <EmptyState title="No result yet" body="Run analysis to create an AI-assisted classification for this scan." />
-              <Button className="mt-4 w-full sm:w-auto" onClick={() => store.runAnalysis(scan)}>
-                Run Analysis
+              <Button className="mt-4 w-full sm:w-auto" onClick={analyzeScan} disabled={analysisLoading}>
+                {analysisLoading ? <Loader2 className="animate-spin" size={16} /> : null}
+                {analysisLoading ? "Analyzing..." : "Run Analysis"}
               </Button>
             </div>
           )}
