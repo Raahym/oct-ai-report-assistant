@@ -129,9 +129,17 @@ export function LoginView() {
       </section>
       <section className="flex items-center justify-center px-5">
         <Card className="w-full max-w-md p-6">
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-clinic-700">Secure clinical workspace</p>
+              <h2 className="mt-2 text-2xl font-black text-slate-950">{authMode === "signin" ? "Sign in" : "Create account"}</h2>
+            </div>
+            <Button className="shrink-0" variant="secondary" onClick={() => setFeedbackOpen(true)}>
+              <MessageSquare size={16} />
+              Feedback
+            </Button>
+          </div>
           <div className="mb-6">
-            <p className="text-xs font-bold uppercase tracking-wide text-clinic-700">Secure clinical workspace</p>
-            <h2 className="mt-2 text-2xl font-black text-slate-950">{authMode === "signin" ? "Sign in" : "Create account"}</h2>
             <p className="mt-1 text-sm text-slate-500">
               {authMode === "signin"
                 ? "Use your approved clinical account."
@@ -211,10 +219,6 @@ export function LoginView() {
                 Check report
               </Link>
             </div>
-            <Button className="w-full" variant="secondary" onClick={() => setFeedbackOpen(true)}>
-              <MessageSquare size={16} />
-              Feedback / complaint
-            </Button>
           </div>
         </Card>
       </section>
@@ -1721,9 +1725,26 @@ export function TemplatesView() {
 
 export function AuditLogsView() {
   const store = useDemoStore();
+  const loginLogs = store.data.auditLogs.filter((log) => log.action.toLowerCase().includes("login"));
   return (
     <>
-      <PageTitle title="Audit Logs" subtitle="Tracks clinical workflow actions for accountability." />
+      <PageTitle title="Login & Audit History" subtitle="Tracks user logins and clinical workflow actions for accountability." />
+      <div className="mb-5 grid gap-3 md:grid-cols-3">
+        <Card className="p-5">
+          <p className="text-sm font-semibold text-slate-500">Total logs</p>
+          <p className="mt-2 text-3xl font-black text-slate-950">{store.data.auditLogs.length}</p>
+        </Card>
+        <Card className="p-5">
+          <p className="text-sm font-semibold text-slate-500">Login entries</p>
+          <p className="mt-2 text-3xl font-black text-slate-950">{loginLogs.length}</p>
+        </Card>
+        <Card className="p-5">
+          <p className="text-sm font-semibold text-slate-500">Latest login</p>
+          <p className="mt-2 text-sm font-black text-slate-950">
+            {loginLogs[0] ? new Date(loginLogs[0].createdAt).toLocaleString() : "-"}
+          </p>
+        </Card>
+      </div>
       <div className="space-y-3 md:hidden">
         {store.data.auditLogs.map((log) => {
           const user = store.data.profiles.find((profile) => profile.id === log.userId);

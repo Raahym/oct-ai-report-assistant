@@ -36,7 +36,7 @@ const adminItems = [
   { href: "/admin/users", label: "Admin Users", icon: UserCog },
   { href: "/admin/templates", label: "Templates", icon: ClipboardList },
   { href: "/admin/feedback", label: "Feedback Inbox", icon: Inbox },
-  { href: "/admin/audit-logs", label: "Audit Logs", icon: ShieldCheck }
+  { href: "/admin/audit-logs", label: "Login & Audit History", icon: ShieldCheck }
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -76,7 +76,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-72 border-r border-slate-200 bg-white lg:block">
+      <aside className="fixed inset-y-0 left-0 z-20 hidden w-72 overflow-y-auto border-r border-slate-200 bg-white lg:block">
         <div className="flex h-20 items-center gap-3 border-b border-slate-100 px-6">
           <div className="flex h-11 w-11 items-center justify-center rounded-md bg-clinic-600 text-white">
             <Activity size={22} />
@@ -86,7 +86,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <p className="text-xs font-medium text-slate-500">Clinical Assistant</p>
           </div>
         </div>
-        <nav className="space-y-1 p-4">
+        <nav className="space-y-1 p-4 pb-32">
           {items.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -105,7 +105,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
-        <div className="absolute bottom-0 left-0 right-0 border-t border-slate-100 p-4">
+        <div className="fixed bottom-0 left-0 w-72 border-t border-slate-100 bg-white p-4">
           <div className="rounded-md bg-slate-50 p-3">
             <p className="text-sm font-bold text-slate-900">{store.currentUser.fullName}</p>
             <p className="text-xs text-slate-500">{store.currentUser.role.toUpperCase()}</p>
