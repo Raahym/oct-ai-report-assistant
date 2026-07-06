@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { reportTemplates, safetyDisclaimer } from "./report-templates";
+import { getReportTemplates, reportTemplates, safetyDisclaimer } from "./report-templates";
 import { supabase } from "./supabase";
 import { isDiseaseClass } from "./types";
 import type {
@@ -898,7 +898,7 @@ export function useDemoStore() {
       if (existing) return existing;
 
       if (mode === "supabase" && supabase) {
-        const template = reportTemplates[aiResult.predictedClass];
+        const template = getReportTemplates()[aiResult.predictedClass];
         const { data: row, error } = await supabase
           .from("reports")
           .insert({
@@ -928,7 +928,7 @@ export function useDemoStore() {
         patientId: scan.patientId,
         scanId: scan.id,
         aiResultId: aiResult.id,
-        ...reportTemplates[aiResult.predictedClass],
+        ...getReportTemplates()[aiResult.predictedClass],
         doctorNotes: patient?.clinicalNotes ?? "",
         finalDiagnosis: "Needs clinical correlation",
         status: "draft",

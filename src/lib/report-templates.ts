@@ -6,9 +6,15 @@ export const safetyDisclaimer =
 export const finalReportDisclaimer =
   "This report was generated with AI assistance and reviewed by a qualified clinician. The AI output is not a standalone diagnosis.";
 
+export type ReportTemplate = {
+  findings: string;
+  impression: string;
+  recommendation: string;
+};
+
 export const reportTemplates: Record<
   DiseaseClass,
-  { findings: string; impression: string; recommendation: string }
+  ReportTemplate
 > = {
   NORMAL: {
     findings:
@@ -42,3 +48,20 @@ export const reportTemplates: Record<
       "Further ophthalmic evaluation and monitoring may be considered."
   }
 };
+
+const TEMPLATE_STORAGE_KEY = "oct-ai-report-assistant-report-templates-v1";
+
+export function getReportTemplates() {
+  if (typeof window === "undefined") return reportTemplates;
+  const raw = window.localStorage.getItem(TEMPLATE_STORAGE_KEY);
+  if (!raw) return reportTemplates;
+  try {
+    return { ...reportTemplates, ...(JSON.parse(raw) as Partial<Record<DiseaseClass, ReportTemplate>>) };
+  } catch {
+    return reportTemplates;
+  }
+}
+
+export function saveReportTemplates(templates: Record<DiseaseClass, ReportTemplate>) {
+  window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templates));
+}

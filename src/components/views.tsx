@@ -28,7 +28,7 @@ import { addFeedbackResponse, getFeedbackEntries, submitFeedback, updateFeedback
 import { prepareScanImages } from "@/lib/image-processing";
 import { downloadPublicReportPdf, downloadReportPdf } from "@/lib/pdf";
 import { checkPublicReport, getPatientAccessPassword, sendFeedbackEmail, sendReportAccessEmail, type PublicReportResult } from "@/lib/report-access";
-import { reportTemplates } from "@/lib/report-templates";
+import { getReportTemplates, reportTemplates, saveReportTemplates } from "@/lib/report-templates";
 import type { DiseaseClass, EyeSide, FeedbackEntry, Gender, Patient, Report, Role } from "@/lib/types";
 
 const diseaseClasses: DiseaseClass[] = ["CNV", "DME", "DRUSEN", "NORMAL"];
@@ -1706,16 +1706,127 @@ export function AdminUsersView() {
 }
 
 export function TemplatesView() {
+  const [templates, setTemplates] = useState(() => getReportTemplates());
+  const [saved, setSaved] = useState("");
+  const [medicine, setMedicine] = useState({
+    template: "DME" as DiseaseClass,
+    name: "",
+    dose: "",
+    route: "Oral",
+    frequency: "Once daily",
+    duration: "",
+    instructions: ""
+  });
+
+  const updateTemplate = (disease: DiseaseClass, field: "findings" | "impression" | "recommendation", value: string) => {
+    setTemplates((current) => ({
+      ...current,
+      [disease]: {
+        ...current[disease],
+        [field]: value
+      }
+    }));
+  };
+
+  const saveTemplates = () => {
+    saveReportTemplates(templates);
+    setSaved("Default report templates saved.");
+    window.setTimeout(() => setSaved(""), 2000);
+  };
+
+  const resetTemplates = () => {
+    if (!window.confirm("Reset report templates to the original defaults?")) return;
+    setTemplates(reportTemplates);
+    saveReportTemplates(reportTemplates);
+    setSaved("Templates reset to defaults.");
+    window.setTimeout(() => setSaved(""), 2000);
+  };
+
+  const addMedicineBlock = () => {
+    if (!medicine.name.trim()) return;
+    const block = [
+      "",
+      "Prescription / Medicine Plan:",
+      `- Medicine: ${medicine.name.trim()}`,
+      medicine.dose.trim() ? `- Dose: ${medicine.dose.trim()}` : "",
+      `- Route: ${medicine.route}`,
+      `- Frequency: ${medicine.frequency}`,
+      medicine.duration.trim() ? `- Duration: ${medicine.duration.trim()}` : "",
+      medicine.instructions.trim() ? `- Instructions: ${medicine.instructions.trim()}` : "",
+      "- Review medicines, allergies, contraindications, and patient history before final approval."
+    ].filter(Boolean).join("\n");
+
+    setTemplates((current) => ({
+      ...current,
+      [medicine.template]: {
+        ...current[medicine.template],
+        recommendation: `${current[medicine.template].recommendation.trim()}\n${block}`.trim()
+      }
+    }));
+    setMedicine((current) => ({ ...current, name: "", dose: "", duration: "", instructions: "" }));
+  };
+
   return (
     <>
-      <PageTitle title="Report Templates" subtitle="Disease-specific report text used when generating drafts." />
+      <PageTitle
+        title="Report Templates"
+        subtitle="Edit the default draft text doctors receive when AI-generated reports are created."
+        action={
+          <div className="grid gap-2 sm:flex">
+            <Button className="w-full sm:w-auto" variant="secondary" onClick={resetTemplates}>Reset Defaults</Button>
+            <Button className="w-full sm:w-auto" onClick={saveTemplates}>
+              <Save size={16} />
+              Save Templates
+            </Button>
+          </div>
+        }
+      />
+      {saved ? <p className="mb-4 rounded-md bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">{saved}</p> : null}
+      <Card className="mb-5 p-5">
+        <CardHeader title="Prescription Block" subtitle="Add reusable medicine instructions to a disease template without copying patient or hospital details." />
+        <div className="grid gap-4 md:grid-cols-3">
+          <SelectField
+            label="Template"
+            value={medicine.template}
+            options={diseaseClasses}
+            onChange={(value) => setMedicine({ ...medicine, template: value as DiseaseClass })}
+          />
+          <Field label="Medicine name" value={medicine.name} onChange={(value) => setMedicine({ ...medicine, name: value })} />
+          <Field label="Dose" value={medicine.dose} onChange={(value) => setMedicine({ ...medicine, dose: value })} />
+          <SelectField
+            label="Route"
+            value={medicine.route}
+            options={["Oral", "Eye drops", "Injection", "Topical", "Other"]}
+            onChange={(value) => setMedicine({ ...medicine, route: value })}
+          />
+          <SelectField
+            label="Frequency"
+            value={medicine.frequency}
+            options={["Once daily", "Twice daily", "Three times daily", "Four times daily", "Once weekly", "As advised"]}
+            onChange={(value) => setMedicine({ ...medicine, frequency: value })}
+          />
+          <Field label="Duration" value={medicine.duration} onChange={(value) => setMedicine({ ...medicine, duration: value })} />
+          <Textarea label="Additional instructions" value={medicine.instructions} onChange={(value) => setMedicine({ ...medicine, instructions: value })} />
+        </div>
+        <Button className="mt-4 w-full sm:w-auto" onClick={addMedicineBlock} disabled={!medicine.name.trim()}>
+          <Plus size={16} />
+          Add to Template
+        </Button>
+      </Card>
       <div className="grid gap-5 lg:grid-cols-2">
         {diseaseClasses.map((item) => (
           <Card key={item} className="p-5">
             <h3 className="text-lg font-black text-slate-950">{item}</h3>
-            <ReportSection title="Findings" body={reportTemplates[item].findings} />
-            <ReportSection title="Impression" body={reportTemplates[item].impression} />
-            <ReportSection title="Recommendation" body={reportTemplates[item].recommendation} />
+            <div className="mt-4 grid gap-4">
+              <Textarea label="Findings" value={templates[item].findings} onChange={(value) => updateTemplate(item, "findings", value)} />
+              <Textarea label="Impression" value={templates[item].impression} onChange={(value) => updateTemplate(item, "impression", value)} />
+              <Textarea
+                label="Recommendation / Plan / Prescription"
+                minRowsClass="min-h-40"
+                value={templates[item].recommendation}
+                onChange={(value) => updateTemplate(item, "recommendation", value)}
+              />
+            </div>
           </Card>
         ))}
       </div>
