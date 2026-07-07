@@ -52,8 +52,6 @@ function EyeDepartmentLogo() {
         />
         <circle cx="22" cy="22" r="7.4" fill="#ffffff" opacity="0.95" />
         <circle cx="22" cy="22" r="4.2" fill="#0f172a" />
-        <path d="M19.8 15.8a13.9 13.9 0 0 1 4.4 0" fill="none" stroke="#99f6e4" strokeLinecap="round" strokeWidth="2" />
-        <path d="M29.3 9.8c2.7 1.7 4.9 3.8 6.8 6.1" fill="none" stroke="#99f6e4" strokeLinecap="round" strokeWidth="2" />
       </svg>
     </div>
   );
