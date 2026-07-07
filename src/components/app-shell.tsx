@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { clsx } from "clsx";
 import {
-  Activity,
   ClipboardList,
   FileClock,
   Inbox,
@@ -38,6 +37,27 @@ const adminItems = [
   { href: "/admin/feedback", label: "Feedback Inbox", icon: Inbox },
   { href: "/admin/audit-logs", label: "Login & Audit History", icon: ShieldCheck }
 ];
+
+function EyeDepartmentLogo() {
+  return (
+    <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-md bg-clinic-600 text-white shadow-soft">
+      <svg viewBox="0 0 44 44" aria-hidden="true" className="h-9 w-9">
+        <path
+          d="M5.5 22c4.2-7.1 9.8-10.7 16.5-10.7S34.3 14.9 38.5 22C34.3 29.1 28.7 32.7 22 32.7S9.7 29.1 5.5 22Z"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="3"
+        />
+        <circle cx="22" cy="22" r="7.4" fill="#ffffff" opacity="0.95" />
+        <circle cx="22" cy="22" r="4.2" fill="#0f172a" />
+        <path d="M19.8 15.8a13.9 13.9 0 0 1 4.4 0" fill="none" stroke="#99f6e4" strokeLinecap="round" strokeWidth="2" />
+        <path d="M29.3 9.8c2.7 1.7 4.9 3.8 6.8 6.1" fill="none" stroke="#99f6e4" strokeLinecap="round" strokeWidth="2" />
+      </svg>
+    </div>
+  );
+}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -78,9 +98,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-slate-50">
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-72 overflow-y-auto border-r border-slate-200 bg-white lg:block">
         <div className="flex h-20 items-center gap-3 border-b border-slate-100 px-6">
-          <div className="flex h-11 w-11 items-center justify-center rounded-md bg-clinic-600 text-white">
-            <Activity size={22} />
-          </div>
+          <EyeDepartmentLogo />
           <div>
             <p className="text-sm font-black text-slate-950">OCT AI Report</p>
             <p className="text-xs font-medium text-slate-500">Clinical Assistant</p>
