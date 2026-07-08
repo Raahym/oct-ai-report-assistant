@@ -171,16 +171,30 @@ class FeedbackResponseRequest(BaseModel):
 def basic_oct_image_check(image: Image.Image) -> bool:
     rgb = np.array(image.convert("RGB").resize((300, 300)))
     gray = np.array(image.convert("L").resize((300, 300)))
+    hsv = np.array(image.convert("HSV").resize((300, 300)))
 
     contrast = float(gray.std())
     brightness = float(gray.mean())
     dark_ratio = float((gray < 45).mean())
     very_bright_ratio = float((gray > 235).mean())
     midtone_ratio = float(((gray >= 45) & (gray <= 220)).mean())
+    saturation = hsv[:, :, 1]
+    saturation_mean = float(saturation.mean())
+    saturation_p90 = float(np.percentile(saturation, 90))
 
     red_green = np.abs(rgb[:, :, 0].astype(float) - rgb[:, :, 1].astype(float)).mean()
     green_blue = np.abs(rgb[:, :, 1].astype(float) - rgb[:, :, 2].astype(float)).mean()
     color_delta = float((red_green + green_blue) / 2)
+    row_std = gray.std(axis=1)
+    row_bright_ratio = (gray > 95).mean(axis=1)
+    row_dark_ratio = (gray < 45).mean(axis=1)
+    retinal_band_rows = (row_std > 20) & (row_bright_ratio > 0.18)
+    max_band_run = 0
+    current_band_run = 0
+    for is_band_row in retinal_band_rows:
+        current_band_run = current_band_run + 1 if is_band_row else 0
+        max_band_run = max(max_band_run, current_band_run)
+    margin_dark_ratio = float((row_dark_ratio[:45].mean() + row_dark_ratio[-45:].mean()) / 2)
 
     if contrast < 20:
         return False
@@ -193,12 +207,22 @@ def basic_oct_image_check(image: Image.Image) -> bool:
     if brightness > 190 and very_bright_ratio > 0.45:
         return False
 
-    if dark_ratio < 0.08 and midtone_ratio < 0.40:
+    has_grayscale_retinal_band = saturation_p90 <= 5 and 8 <= max_band_run <= 120 and contrast > 35
+    if dark_ratio < 0.22 and margin_dark_ratio < 0.22 and not has_grayscale_retinal_band:
+        return False
+
+    if midtone_ratio < 0.08:
         return False
 
     # OCT B-scans are usually grayscale-like. Strong color differences often mean
     # the upload is a normal photo, screenshot, fundus photo, or other non-OCT image.
-    if color_delta > 18:
+    if color_delta > 18 or saturation_mean > 18 or saturation_p90 > 60:
+        return False
+
+    # Real B-scans usually have a bounded retinal band surrounded by dark space.
+    # Natural photos often have texture across most rows; diagrams often lack a
+    # sustained retinal band.
+    if max_band_run < 5 or max_band_run > 180:
         return False
 
     return True
