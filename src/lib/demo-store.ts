@@ -867,8 +867,9 @@ export function useDemoStore() {
           .update({ image_url: publicUrl.publicUrl, storage_path: storagePath })
           .eq("id", scanId)
           .select("*")
-          .single();
+          .maybeSingle();
         if (error) throw new Error(error.message);
+        if (!row) throw new Error("Scan image was not changed. Supabase may be missing scan update permissions.");
 
         if (existing.storagePath) {
           await supabase.storage.from("oct-scans").remove([existing.storagePath]);
@@ -913,8 +914,9 @@ export function useDemoStore() {
           const { error: aiError } = await supabase.from("ai_results").delete().eq("scan_id", scanId);
           if (aiError) throw new Error(aiError.message);
         }
-        const { error } = await supabase.from("scans").delete().eq("id", scanId);
+        const { data: deletedRows, error } = await supabase.from("scans").delete().eq("id", scanId).select("id");
         if (error) throw new Error(error.message);
+        if (!deletedRows?.length) throw new Error("Scan was not deleted. Supabase may be missing scan delete permissions.");
         if (existing.storagePath) {
           await supabase.storage.from("oct-scans").remove([existing.storagePath]);
         }
@@ -951,7 +953,12 @@ export function useDemoStore() {
         createdAt: now()
       };
       const scans = data.scans.some((item) => item.id === scan.id) ? data.scans : [scan, ...data.scans];
-      commit(audit({ ...data, scans, aiResults: [aiResult, ...data.aiResults] }, "AI analysis generated", "ai_result", aiResult.id, safetyDisclaimer));
+      commit(audit({
+        ...data,
+        scans,
+        aiResults: [aiResult, ...data.aiResults.filter((result) => result.scanId !== scan.id)],
+        reports: data.reports.filter((report) => report.scanId !== scan.id)
+      }, "AI analysis generated", "ai_result", aiResult.id, safetyDisclaimer));
       return aiResult;
     },
     async saveBackendAnalysis(scan: Scan, prediction: BackendPrediction) {
@@ -961,6 +968,13 @@ export function useDemoStore() {
       const probabilities = prediction.probabilities as Record<DiseaseClass, number>;
 
       if (mode === "supabase" && supabase) {
+        const existingAiIds = data.aiResults.filter((result) => result.scanId === scan.id).map((result) => result.id);
+        if (existingAiIds.length) {
+          const { error: reportError } = await supabase.from("reports").delete().in("ai_result_id", existingAiIds);
+          if (reportError) throw new Error(reportError.message);
+          const { error: aiDeleteError } = await supabase.from("ai_results").delete().eq("scan_id", scan.id);
+          if (aiDeleteError) throw new Error(aiDeleteError.message);
+        }
         const { data: row, error } = await supabase
           .from("ai_results")
           .insert({
@@ -977,7 +991,11 @@ export function useDemoStore() {
 
         if (error) throw new Error(error.message);
         const aiResult = mapAiResult(row as DbAiResult);
-        setData((current) => ({ ...current, aiResults: [aiResult, ...current.aiResults] }));
+        setData((current) => ({
+          ...current,
+          aiResults: [aiResult, ...current.aiResults.filter((result) => result.scanId !== scan.id)],
+          reports: current.reports.filter((report) => report.scanId !== scan.id)
+        }));
         await insertAudit(actorId, "AI analysis generated", "ai_result", aiResult.id, prediction.disclaimer);
         return aiResult;
       }
@@ -994,7 +1012,12 @@ export function useDemoStore() {
         createdAt: now()
       };
       const scans = data.scans.some((item) => item.id === scan.id) ? data.scans : [scan, ...data.scans];
-      commit(audit({ ...data, scans, aiResults: [aiResult, ...data.aiResults] }, "AI analysis generated", "ai_result", aiResult.id, prediction.disclaimer));
+      commit(audit({
+        ...data,
+        scans,
+        aiResults: [aiResult, ...data.aiResults.filter((result) => result.scanId !== scan.id)],
+        reports: data.reports.filter((report) => report.scanId !== scan.id)
+      }, "AI analysis generated", "ai_result", aiResult.id, prediction.disclaimer));
       return aiResult;
     },
     async createReport(scan: Scan, aiResult: AiResult) {
