@@ -30,6 +30,10 @@ const navItems = [
   { href: "/change-password", label: "Change Password", icon: KeyRound }
 ];
 
+const doctorItems = [
+  { href: "/admin/templates", label: "Templates", icon: ClipboardList }
+];
+
 const adminItems = [
   { href: "/admin/users", label: "Admin Users", icon: UserCog },
   { href: "/admin/templates", label: "Templates", icon: ClipboardList },
@@ -88,7 +92,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const items = store.currentUser.role === "admin" ? [...navItems, ...adminItems] : navItems;
+  const items = store.currentUser.role === "admin" ? [...navItems, ...adminItems] : store.currentUser.role === "doctor" ? [...navItems, ...doctorItems] : navItems;
 
   return (
     <div className="min-h-screen bg-slate-50">

@@ -3,6 +3,7 @@
 import type { FeedbackEntry, FeedbackResponse } from "./types";
 
 const FEEDBACK_KEY = "oct-ai-report-assistant-feedback-v1";
+let cachedFeedbackEntries: FeedbackEntry[] | null = null;
 
 function backendBaseUrl() {
   const url = process.env.NEXT_PUBLIC_AI_BACKEND_URL;
@@ -35,10 +36,17 @@ export async function getFeedbackEntries() {
     const response = await fetch(`${backendBaseUrl()}/feedback`, { cache: "no-store" });
     if (!response.ok) throw new Error(await readError(response, "Could not load feedback."));
     const body = await response.json();
-    return (body.entries ?? []) as FeedbackEntry[];
+    cachedFeedbackEntries = (body.entries ?? []) as FeedbackEntry[];
+    return cachedFeedbackEntries;
   } catch {
-    return readEntries();
+    cachedFeedbackEntries = cachedFeedbackEntries ?? readEntries();
+    return cachedFeedbackEntries;
   }
+}
+
+export function getCachedFeedbackEntries() {
+  cachedFeedbackEntries = cachedFeedbackEntries ?? readEntries();
+  return cachedFeedbackEntries;
 }
 
 export async function submitFeedback(input: Omit<FeedbackEntry, "id" | "status" | "createdAt">) {
@@ -58,6 +66,7 @@ export async function submitFeedback(input: Omit<FeedbackEntry, "id" | "status" 
     });
     if (!response.ok) throw new Error(await readError(response, "Could not submit feedback."));
     const body = await response.json();
+    cachedFeedbackEntries = null;
     return body.entry as FeedbackEntry;
   } catch (error) {
     throw error;

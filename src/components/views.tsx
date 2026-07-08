@@ -27,7 +27,7 @@ import { PageTitle } from "./app-shell";
 import { Button, Card, CardHeader, EmptyState, SafetyNotice, StatusBadge } from "./ui";
 import { predictOCT } from "@/lib/ai-api";
 import { useDemoStore } from "@/lib/demo-store";
-import { addFeedbackResponse, getFeedbackEntries, submitFeedback, updateFeedbackStatus } from "@/lib/feedback";
+import { addFeedbackResponse, getCachedFeedbackEntries, getFeedbackEntries, submitFeedback, updateFeedbackStatus } from "@/lib/feedback";
 import { prepareScanImages } from "@/lib/image-processing";
 import { downloadPublicReportPdf, downloadReportPdf } from "@/lib/pdf";
 import { changePatientAccessPassword, checkPublicReport, getPatientAccessId, getPatientCurrentAccessPassword, sendFeedbackEmail, sendReportAccessEmail, type PublicReport, type PublicReportResult } from "@/lib/report-access";
@@ -1731,12 +1731,13 @@ function PatientReportHistory({ reports }: { reports: PublicReport[] }) {
 
 export function FeedbackReviewView({ scope = "admin" }: { scope?: "admin" | "hod" }) {
   const store = useDemoStore();
-  const [entries, setEntries] = useState<FeedbackEntry[]>([]);
+  const cachedEntries = getCachedFeedbackEntries();
+  const [entries, setEntries] = useState<FeedbackEntry[]>(cachedEntries);
   const [filter, setFilter] = useState<"all" | FeedbackEntry["status"]>("all");
   const [tab, setTab] = useState<"inbox" | "messages">("inbox");
   const [responses, setResponses] = useState<Record<string, string>>({});
   const [responseMessage, setResponseMessage] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(cachedEntries.length === 0);
   const canReview = store.currentUser.role === "admin";
   const visible = entries.filter((entry) => {
     if (tab === "messages" && !(entry.responses?.length)) return false;
@@ -1745,7 +1746,7 @@ export function FeedbackReviewView({ scope = "admin" }: { scope?: "admin" | "hod
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    setLoading(entries.length === 0);
     getFeedbackEntries()
       .then((items) => {
         if (!cancelled) setEntries(items);
@@ -2040,6 +2041,8 @@ export function AdminUsersView() {
 }
 
 export function TemplatesView() {
+  const store = useDemoStore();
+  const canEditTemplates = store.currentUser.role === "admin" || store.currentUser.role === "doctor";
   const [templates, setTemplates] = useState(reportTemplates);
   const [saved, setSaved] = useState("");
   const [loading, setLoading] = useState(true);
@@ -2133,6 +2136,8 @@ export function TemplatesView() {
     }));
     setMedicine((current) => ({ ...current, name: "", dose: "", duration: "", instructions: "" }));
   };
+
+  if (!canEditTemplates) return <Missing title="Access restricted" href="/dashboard" label="Back to dashboard" />;
 
   return (
     <>
