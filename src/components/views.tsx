@@ -997,7 +997,7 @@ export function AnalysisView({ id }: { id: string }) {
   const patient = store.data.patients.find((item) => item.id === scan.patientId);
   const aiResult = store.data.aiResults.find((item) => item.scanId === scan.id);
   const linkedReport = aiResult ? store.data.reports.find((report) => report.aiResultId === aiResult.id) : undefined;
-  const canManageAnalysis = store.currentUser.role === "doctor";
+  const canManageAnalysis = store.currentUser.role === "doctor" || store.currentUser.role === "admin";
 
   const analyzeScan = async () => {
     setAnalysisError("");

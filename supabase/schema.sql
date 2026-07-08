@@ -116,6 +116,7 @@ create policy "authenticated read scans" on scans for select to authenticated us
 create policy "authenticated insert scans" on scans for insert to authenticated with check (true);
 create policy "authenticated read ai results" on ai_results for select to authenticated using (true);
 create policy "authenticated insert ai results" on ai_results for insert to authenticated with check (true);
+create policy "authenticated delete ai results" on ai_results for delete to authenticated using (true);
 create policy "authenticated read reports" on reports for select to authenticated using (true);
 create policy "authenticated write reports" on reports for all to authenticated using (true) with check (true);
 create policy "authenticated read report versions" on report_versions for select to authenticated using (true);

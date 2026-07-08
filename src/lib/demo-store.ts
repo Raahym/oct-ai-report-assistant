@@ -1033,7 +1033,7 @@ export function useDemoStore() {
       return approved;
     },
     async deleteReport(reportId: string) {
-      if (currentUser.role !== "doctor") {
+      if (currentUser.role !== "doctor" && currentUser.role !== "admin") {
         throw new Error("Only doctors can delete reports.");
       }
       if (mode === "supabase" && supabase) {
@@ -1046,8 +1046,8 @@ export function useDemoStore() {
       commit(audit({ ...data, reports: data.reports.filter((report) => report.id !== reportId) }, "Report deleted", "report", reportId, "Report removed"));
     },
     async deleteAnalysis(aiResultId: string) {
-      if (currentUser.role !== "doctor") {
-        throw new Error("Only doctors can delete analyses.");
+      if (currentUser.role !== "doctor" && currentUser.role !== "admin") {
+        throw new Error("Only doctors or admins can delete analyses.");
       }
       const linkedReports = data.reports.filter((report) => report.aiResultId === aiResultId);
       if (mode === "supabase" && supabase) {
