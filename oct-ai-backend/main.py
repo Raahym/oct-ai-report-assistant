@@ -151,6 +151,34 @@ def gradcam_overlay_base64(image: Image.Image, image_tensor: torch.Tensor, class
         model.zero_grad(set_to_none=True)
 
 
+def predict_tensor(image_tensor: torch.Tensor) -> tuple[dict[str, float], str, float]:
+    with torch.inference_mode():
+        logits = model(image_tensor)
+        softmax = torch.softmax(logits, dim=1).squeeze(0).cpu()
+
+    probabilities = {
+        class_name: round(float(softmax[index]), 4)
+        for index, class_name in enumerate(CLASSES)
+    }
+    prediction = max(probabilities, key=probabilities.get)
+    confidence = probabilities[prediction]
+    return probabilities, prediction, confidence
+
+
+async def read_oct_upload(file: UploadFile) -> Image.Image:
+    if file.content_type not in {"image/jpeg", "image/png"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Only JPG, JPEG, and PNG OCT images are supported.",
+        )
+
+    try:
+        image_bytes = await file.read()
+        return Image.open(BytesIO(image_bytes)).convert("RGB")
+    except (UnidentifiedImageError, OSError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid image file.") from exc
+
+
 def clean_state_dict(checkpoint: Any) -> dict[str, torch.Tensor]:
     if isinstance(checkpoint, torch.nn.Module):
         return checkpoint.state_dict()
@@ -847,17 +875,7 @@ async def predict(file: UploadFile = File(...)):
             detail=f"AI model is not loaded. {model_error}",
         )
 
-    if file.content_type not in {"image/jpeg", "image/png"}:
-        raise HTTPException(
-            status_code=400,
-            detail="Only JPG, JPEG, and PNG OCT images are supported.",
-        )
-
-    try:
-        image_bytes = await file.read()
-        image = Image.open(BytesIO(image_bytes)).convert("RGB")
-    except (UnidentifiedImageError, OSError) as exc:
-        raise HTTPException(status_code=400, detail="Invalid image file.") from exc
+    image = await read_oct_upload(file)
 
     try:
         if not basic_oct_image_check(image):
@@ -873,17 +891,8 @@ async def predict(file: UploadFile = File(...)):
             }
 
         image_tensor = preprocess(image).unsqueeze(0).to(device)
-        with torch.inference_mode():
-            logits = model(image_tensor)
-            softmax = torch.softmax(logits, dim=1).squeeze(0).cpu()
+        probabilities, prediction, confidence = predict_tensor(image_tensor)
         inference_time_ms = round((time.perf_counter() - started_at) * 1000)
-
-        probabilities = {
-            class_name: round(float(softmax[index]), 4)
-            for index, class_name in enumerate(CLASSES)
-        }
-        prediction = max(probabilities, key=probabilities.get)
-        confidence = probabilities[prediction]
 
         if confidence < MIN_CONFIDENCE:
             return {
@@ -911,3 +920,64 @@ async def predict(file: UploadFile = File(...)):
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Prediction failed: {exc}") from exc
+
+
+@app.post("/gradcam")
+async def gradcam(file: UploadFile = File(...)):
+    started_at = time.perf_counter()
+    if not ENABLE_GRADCAM:
+        raise HTTPException(
+            status_code=503,
+            detail="Grad-CAM is disabled on this backend. Enable it only on a memory-safe worker.",
+        )
+    if model is None:
+        raise HTTPException(
+            status_code=503,
+            detail=f"AI model is not loaded. {model_error}",
+        )
+
+    image = await read_oct_upload(file)
+
+    try:
+        if not basic_oct_image_check(image):
+            return {
+                "prediction": "INVALID_IMAGE",
+                "confidence": 0,
+                "probabilities": {},
+                "model_name": MODEL_NAME,
+                "model_version": MODEL_VERSION,
+                "is_valid_oct": False,
+                "gradcam_overlay_base64": None,
+                "disclaimer": INVALID_IMAGE_DISCLAIMER,
+            }
+
+        image_tensor = preprocess(image).unsqueeze(0).to(device)
+        probabilities, prediction, confidence = predict_tensor(image_tensor)
+
+        if confidence < MIN_CONFIDENCE:
+            return {
+                "prediction": "INVALID_OR_UNCERTAIN_IMAGE",
+                "confidence": confidence,
+                "probabilities": probabilities,
+                "model_name": MODEL_NAME,
+                "model_version": MODEL_VERSION,
+                "is_valid_oct": False,
+                "gradcam_overlay_base64": None,
+                "disclaimer": LOW_CONFIDENCE_DISCLAIMER,
+            }
+
+        overlay = gradcam_overlay_base64(image, image_tensor, CLASSES.index(prediction))
+        return {
+            "prediction": prediction,
+            "confidence": confidence,
+            "probabilities": probabilities,
+            "model_name": MODEL_NAME,
+            "model_version": MODEL_VERSION,
+            "inference_time_ms": round((time.perf_counter() - started_at) * 1000),
+            "is_valid_oct": True,
+            "gradcam_overlay_base64": overlay,
+            "gradcam_disclaimer": "Highlighted regions indicate areas that influenced the AI classification. This is not a segmentation map or measurement.",
+            "disclaimer": DISCLAIMER,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Grad-CAM generation failed: {exc}") from exc
