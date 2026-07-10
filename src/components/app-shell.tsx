@@ -2,19 +2,25 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import {
+  ChevronDown,
+  ChevronRight,
   ClipboardList,
+  FileText,
   Inbox,
   KeyRound,
   LayoutDashboard,
   LogOut,
   ShieldCheck,
   ScanEye,
+  Search,
   UserCog,
   Activity,
-  Eye
+  Eye,
+  Upload,
+  Users
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useDemoStore } from "@/lib/demo-store";
@@ -37,6 +43,24 @@ const moduleNavItems = {
   vkg: { href: "/modules/vkg", label: "VKG", icon: Activity },
   corneal: { href: "/modules/corneal", label: "Corneal Detection", icon: Activity },
   retina: { href: "/modules/retina", label: "Retinal Screening", icon: Eye }
+};
+
+const moduleTreeItems = {
+  oct: [
+    { href: "/modules/oct", label: "Overview", icon: LayoutDashboard },
+    { href: "/patients/search", label: "Patients", icon: Users },
+    { href: "/patients/new", label: "New Patient", icon: UserCog },
+    { href: "/scans/upload", label: "Upload Scan", icon: Upload },
+    { href: "/reports/history", label: "Reports", icon: FileText }
+  ],
+  vkg: [
+    { href: "/modules/vkg", label: "Overview", icon: LayoutDashboard },
+    { href: "/modules/vkg", label: "Patients", icon: Users },
+    { href: "/modules/vkg", label: "Tests", icon: Activity },
+    { href: "/modules/vkg", label: "Reports", icon: FileText }
+  ],
+  corneal: [{ href: "/modules/corneal", label: "Overview", icon: LayoutDashboard }],
+  retina: [{ href: "/modules/retina", label: "Overview", icon: LayoutDashboard }]
 };
 
 const doctorItems = [
@@ -76,6 +100,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const store = useDemoStore();
   const isAuthenticated = Boolean(store.data.currentUserId);
+  const [openModules, setOpenModules] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (store.ready && !isAuthenticated) {
@@ -104,6 +129,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   const visibleModuleItems = Array.from(new Map(store.visibleModuleIds.map((id) => [moduleNavItems[id].href, moduleNavItems[id]])).values());
+  const expandedModules = useMemo(() => {
+    const next: Record<string, boolean> = {};
+    store.visibleModuleIds.forEach((id) => {
+      const parent = moduleNavItems[id];
+      const children = moduleTreeItems[id] ?? [];
+      next[id] = openModules[id] ?? (pathname === parent.href || pathname.startsWith(`${parent.href}/`) || children.some((child) => pathname === child.href || pathname.startsWith(`${child.href}/`)));
+    });
+    return next;
+  }, [openModules, pathname, store.visibleModuleIds]);
   const navItems = store.currentUser.role === "afio_admin" ? businessItems : [baseNavItems[0], ...visibleModuleItems, baseNavItems[1]];
   const items =
     store.currentUser.role === "afio_admin"
@@ -127,7 +161,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
         <nav className="space-y-1 p-4 pb-32">
-          {items.map((item) => {
+          {store.currentUser.role === "afio_admin" ? items.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
@@ -143,7 +177,45 @@ export function AppShell({ children }: { children: ReactNode }) {
                 {item.label}
               </Link>
             );
-          })}
+          }) : (
+            <>
+              <NavLinkItem item={baseNavItems[0]} pathname={pathname} />
+              {store.visibleModuleIds.map((moduleId) => {
+                const item = moduleNavItems[moduleId];
+                const Icon = item.icon;
+                const children = moduleTreeItems[moduleId] ?? [];
+                const isOpen = expandedModules[moduleId];
+                const active = pathname === item.href || pathname.startsWith(`${item.href}/`) || children.some((child) => pathname === child.href || pathname.startsWith(`${child.href}/`));
+                return (
+                  <div key={item.href}>
+                    <div className={clsx("flex items-center rounded-md transition", active ? "bg-clinic-50 text-clinic-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950")}>
+                      <button
+                        className="flex h-10 w-9 items-center justify-center"
+                        aria-label={`${isOpen ? "Collapse" : "Expand"} ${item.label}`}
+                        onClick={() => setOpenModules((current) => ({ ...current, [moduleId]: !isOpen }))}
+                      >
+                        {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      </button>
+                      <Link href={item.href} className="flex flex-1 items-center gap-3 py-2.5 pr-3 text-sm font-semibold">
+                        <Icon size={18} />
+                        {item.label}
+                      </Link>
+                    </div>
+                    {isOpen ? (
+                      <div className="ml-5 mt-1 space-y-1 border-l border-slate-200 pl-3">
+                        {children.map((child) => (
+                          <NavLinkItem key={`${moduleId}-${child.label}-${child.href}`} item={child} pathname={pathname} nested />
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+              <NavLinkItem item={baseNavItems[1]} pathname={pathname} />
+              {store.currentUser.role === "hospital_admin" || store.currentUser.role === "admin" ? adminItems.map((item) => <NavLinkItem key={item.href} item={item} pathname={pathname} />) : null}
+              {store.currentUser.role === "doctor" ? doctorItems.map((item) => <NavLinkItem key={item.href} item={item} pathname={pathname} />) : null}
+            </>
+          )}
         </nav>
         <div className="fixed bottom-0 left-0 w-72 border-t border-slate-100 bg-white p-4">
           <div className="rounded-md bg-slate-50 p-3">
@@ -188,6 +260,32 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="mx-auto max-w-7xl px-3 py-5 sm:px-4 md:px-8">{children}</main>
       </div>
     </div>
+  );
+}
+
+function NavLinkItem({
+  item,
+  pathname,
+  nested = false
+}: {
+  item: { href: string; label: string; icon: React.ComponentType<{ size?: number }> };
+  pathname: string;
+  nested?: boolean;
+}) {
+  const Icon = item.icon;
+  const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+  return (
+    <Link
+      href={item.href}
+      className={clsx(
+        "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition",
+        nested ? "py-2 text-xs" : "",
+        active ? "bg-clinic-50 text-clinic-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+      )}
+    >
+      <Icon size={nested ? 15 : 18} />
+      {item.label}
+    </Link>
   );
 }
 

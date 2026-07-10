@@ -848,6 +848,7 @@ export function AfioBusinessAdminView() {
     subscriptionStatus: "trial" as "trial" | "active" | "past_due" | "suspended",
     enabledModules: ["oct"] as ModuleId[]
   });
+  const [hospitalDrafts, setHospitalDrafts] = useState<Record<string, { name: string; code: string; adminEmail: string }>>({});
   const allModuleIds: ModuleId[] = ["oct", "vkg", "corneal", "retina"];
   const moduleNames: Record<ModuleId, string> = {
     oct: "OCT",
@@ -855,6 +856,16 @@ export function AfioBusinessAdminView() {
     corneal: "Corneal",
     retina: "Retina"
   };
+
+  useEffect(() => {
+    setHospitalDrafts((current) => {
+      const next = { ...current };
+      store.data.hospitals.forEach((hospital) => {
+        next[hospital.id] ??= { name: hospital.name, code: hospital.code, adminEmail: hospital.adminEmail ?? "" };
+      });
+      return next;
+    });
+  }, [store.data.hospitals]);
 
   const updateHospital = async (hospitalId: string, input: Parameters<typeof store.updateHospitalAccess>[1]) => {
     setError("");
@@ -876,6 +887,33 @@ export function AfioBusinessAdminView() {
       setNewHospital({ name: "", code: "", adminEmail: "", subscriptionStatus: "trial", enabledModules: ["oct"] });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add hospital.");
+    } finally {
+      setSavingHospitalId("");
+    }
+  };
+
+  const updateHospitalDetails = async (hospitalId: string) => {
+    const draft = hospitalDrafts[hospitalId];
+    if (!draft) return;
+    setError("");
+    setSavingHospitalId(hospitalId);
+    try {
+      await store.updateHospitalDetails(hospitalId, draft);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update hospital details.");
+    } finally {
+      setSavingHospitalId("");
+    }
+  };
+
+  const deleteHospital = async (hospitalId: string, hospitalName: string) => {
+    if (!window.confirm(`Remove ${hospitalName}? This removes the hospital access record and its module grants.`)) return;
+    setError("");
+    setSavingHospitalId(hospitalId);
+    try {
+      await store.deleteHospital(hospitalId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not remove hospital.");
     } finally {
       setSavingHospitalId("");
     }
@@ -952,13 +990,30 @@ export function AfioBusinessAdminView() {
         {store.data.hospitals.map((hospital) => (
           <Card key={hospital.id} className="p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div>
+              <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-xl font-black text-slate-950">{hospital.name}</h3>
                   <StatusBadge status={hospital.isActive ? "active" : "pending"} />
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black uppercase text-slate-500">{hospital.subscriptionStatus}</span>
                 </div>
                 <p className="mt-2 text-sm text-slate-500">Code: {hospital.code} · Admin: {hospital.adminEmail ?? "Not assigned"}</p>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <Field
+                    label="Hospital name"
+                    value={hospitalDrafts[hospital.id]?.name ?? hospital.name}
+                    onChange={(value) => setHospitalDrafts((current) => ({ ...current, [hospital.id]: { ...(current[hospital.id] ?? { code: hospital.code, adminEmail: hospital.adminEmail ?? "" }), name: value } }))}
+                  />
+                  <Field
+                    label="Code"
+                    value={hospitalDrafts[hospital.id]?.code ?? hospital.code}
+                    onChange={(value) => setHospitalDrafts((current) => ({ ...current, [hospital.id]: { ...(current[hospital.id] ?? { name: hospital.name, adminEmail: hospital.adminEmail ?? "" }), code: value } }))}
+                  />
+                  <Field
+                    label="Admin email"
+                    value={hospitalDrafts[hospital.id]?.adminEmail ?? hospital.adminEmail ?? ""}
+                    onChange={(value) => setHospitalDrafts((current) => ({ ...current, [hospital.id]: { ...(current[hospital.id] ?? { name: hospital.name, code: hospital.code }), adminEmail: value } }))}
+                  />
+                </div>
               </div>
               <div className="grid gap-2 sm:flex">
                 <select
@@ -978,6 +1033,14 @@ export function AfioBusinessAdminView() {
                   onClick={() => void updateHospital(hospital.id, { isActive: !hospital.isActive })}
                 >
                   {savingHospitalId === hospital.id ? "Saving..." : hospital.isActive ? "Disable" : "Enable"}
+                </Button>
+                <Button variant="secondary" disabled={savingHospitalId === hospital.id} onClick={() => void updateHospitalDetails(hospital.id)}>
+                  <Save size={16} />
+                  Save Details
+                </Button>
+                <Button variant="danger" disabled={savingHospitalId === hospital.id} onClick={() => void deleteHospital(hospital.id, hospital.name)}>
+                  <Trash2 size={16} />
+                  Remove
                 </Button>
               </div>
             </div>
@@ -1575,13 +1638,20 @@ export function AnalysisView({ id }: { id: string }) {
               </div>
               {aiResult.heatmapUrl ? (
                 <div className="rounded-md border border-slate-200 bg-white p-3">
-                  <p className="text-sm font-black text-slate-950">AI attention heatmap</p>
+                  <p className="text-sm font-black text-slate-950">Grad-CAM attention heatmap</p>
                   <img src={aiResult.heatmapUrl} alt="Grad-CAM heatmap overlay" className="mt-3 aspect-[4/3] w-full rounded-md bg-slate-900 object-cover" />
                   <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500">
                     Highlighted regions influenced the AI classification. This is not a segmentation map or measurement.
                   </p>
                 </div>
-              ) : null}
+              ) : (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-sm font-black text-amber-950">Grad-CAM not returned</p>
+                  <p className="mt-1 text-xs font-semibold leading-relaxed text-amber-800">
+                    The app called the Grad-CAM analysis endpoint. If no overlay appears, the live Render backend is still returning the standard prediction response or the scan was analyzed before Grad-CAM storage was enabled. Re-run analysis after the backend redeploy finishes.
+                  </p>
+                </div>
+              )}
               <Info label="Model" value={`${aiResult.modelName} ${aiResult.modelVersion}`} />
               <Info label="Timestamp" value={new Date(aiResult.createdAt).toLocaleString()} />
               <div className="grid gap-2 sm:flex">

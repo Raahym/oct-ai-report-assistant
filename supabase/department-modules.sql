@@ -239,6 +239,11 @@ drop policy if exists "anon read enabled clinic modules" on clinic_modules;
 drop policy if exists "authenticated read clinic modules" on clinic_modules;
 drop policy if exists "authenticated read department users" on department_users;
 drop policy if exists "authenticated read module api keys" on module_api_keys;
+drop policy if exists "business admin manage clinics" on clinics;
+drop policy if exists "business admin manage departments" on departments;
+drop policy if exists "business admin manage clinic modules" on clinic_modules;
+drop policy if exists "business admin manage department users" on department_users;
+drop policy if exists "business admin manage module api keys" on module_api_keys;
 
 create policy "anon read signup clinics" on clinics for select to anon using (is_active = true and allow_self_signup = true and subscription_status <> 'suspended');
 create policy "authenticated read clinics" on clinics for select to authenticated using (true);
@@ -247,3 +252,28 @@ create policy "anon read enabled clinic modules" on clinic_modules for select to
 create policy "authenticated read clinic modules" on clinic_modules for select to authenticated using (true);
 create policy "authenticated read department users" on department_users for select to authenticated using (true);
 create policy "authenticated read module api keys" on module_api_keys for select to authenticated using (true);
+
+create policy "business admin manage clinics" on clinics
+for all to authenticated
+using (exists (select 1 from profiles where profiles.id = auth.uid() and profiles.role = 'afio_admin'))
+with check (exists (select 1 from profiles where profiles.id = auth.uid() and profiles.role = 'afio_admin'));
+
+create policy "business admin manage departments" on departments
+for all to authenticated
+using (exists (select 1 from profiles where profiles.id = auth.uid() and profiles.role = 'afio_admin'))
+with check (exists (select 1 from profiles where profiles.id = auth.uid() and profiles.role = 'afio_admin'));
+
+create policy "business admin manage clinic modules" on clinic_modules
+for all to authenticated
+using (exists (select 1 from profiles where profiles.id = auth.uid() and profiles.role = 'afio_admin'))
+with check (exists (select 1 from profiles where profiles.id = auth.uid() and profiles.role = 'afio_admin'));
+
+create policy "business admin manage department users" on department_users
+for all to authenticated
+using (exists (select 1 from profiles where profiles.id = auth.uid() and profiles.role = 'afio_admin'))
+with check (exists (select 1 from profiles where profiles.id = auth.uid() and profiles.role = 'afio_admin'));
+
+create policy "business admin manage module api keys" on module_api_keys
+for all to authenticated
+using (exists (select 1 from profiles where profiles.id = auth.uid() and profiles.role = 'afio_admin'))
+with check (exists (select 1 from profiles where profiles.id = auth.uid() and profiles.role = 'afio_admin'));

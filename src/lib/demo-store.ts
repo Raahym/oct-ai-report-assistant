@@ -1518,6 +1518,21 @@ export function useDemoStore() {
           .single();
         if (error) throw new Error(error.message);
         const clinic = clinicRow as DbHospital;
+        const departments = [
+          ["oct", "OCT Department"],
+          ["vkg", "VKG Department"],
+          ["corneal", "Corneal / Keratoconus Department"],
+          ["retina", "Retinal Fundus Department"]
+        ] as const;
+        const { error: departmentError } = await supabase.from("departments").insert(
+          departments.map(([moduleId, name]) => ({
+            clinic_id: clinic.id,
+            module_id: moduleId,
+            name,
+            is_active: true
+          }))
+        );
+        if (departmentError) throw new Error(departmentError.message);
         if (input.enabledModules.length) {
           const { error: moduleError } = await supabase.from("clinic_modules").insert(
             input.enabledModules.map((moduleId) => ({
@@ -1548,6 +1563,66 @@ export function useDemoStore() {
       };
       commit(audit({ ...data, hospitals: [hospital, ...data.hospitals] }, "Hospital created", "hospital", hospital.id, hospital.name));
       return hospital;
+    },
+    async updateHospitalDetails(hospitalId: string, input: { name: string; code: string; adminEmail?: string }) {
+      if (currentUser.role !== "afio_admin") {
+        throw new Error("Only Business Admin can edit hospital details.");
+      }
+      const code = input.code.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "-");
+      if (!input.name.trim() || !code) throw new Error("Hospital name and code are required.");
+
+      if (mode === "supabase" && supabase) {
+        const { data: row, error } = await supabase
+          .from("clinics")
+          .update({
+            name: input.name.trim(),
+            code,
+            admin_email: input.adminEmail || null
+          })
+          .eq("id", hospitalId)
+          .select("*, clinic_modules(module_id,is_enabled)")
+          .single();
+        if (error) throw new Error(error.message);
+        const saved = mapHospital(row as DbHospital);
+        setData((current) => ({
+          ...current,
+          hospitals: current.hospitals.map((hospital) => (hospital.id === hospitalId ? saved : hospital))
+        }));
+        await insertAudit(actorId, "Hospital details updated", "hospital", hospitalId, saved.name);
+        return;
+      }
+
+      const hospitals = data.hospitals.map((hospital) =>
+        hospital.id === hospitalId
+          ? {
+              ...hospital,
+              name: input.name.trim(),
+              code,
+              adminEmail: input.adminEmail || undefined
+            }
+          : hospital
+      );
+      commit(audit({ ...data, hospitals }, "Hospital details updated", "hospital", hospitalId, input.name.trim()));
+    },
+    async deleteHospital(hospitalId: string) {
+      if (currentUser.role !== "afio_admin") {
+        throw new Error("Only Business Admin can remove hospitals.");
+      }
+      const hospital = data.hospitals.find((item) => item.id === hospitalId);
+      if (!hospital) throw new Error("Hospital not found.");
+
+      if (mode === "supabase" && supabase) {
+        const { error } = await supabase.from("clinics").delete().eq("id", hospitalId);
+        if (error) throw new Error(error.message);
+        setData((current) => ({
+          ...current,
+          hospitals: current.hospitals.filter((item) => item.id !== hospitalId)
+        }));
+        await insertAudit(actorId, "Hospital removed", "hospital", hospitalId, hospital.name);
+        return;
+      }
+
+      commit(audit({ ...data, hospitals: data.hospitals.filter((item) => item.id !== hospitalId) }, "Hospital removed", "hospital", hospitalId, hospital.name));
     },
     async updateHospitalAccess(hospitalId: string, input: { isActive?: boolean; subscriptionStatus?: Hospital["subscriptionStatus"]; enabledModules?: ModuleId[] }) {
       if (currentUser.role !== "afio_admin") {
