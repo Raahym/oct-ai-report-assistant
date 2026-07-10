@@ -30,19 +30,13 @@ import { predictOCT } from "@/lib/ai-api";
 import { useDemoStore } from "@/lib/demo-store";
 import { addFeedbackResponse, getCachedFeedbackEntries, getFeedbackEntries, submitFeedback, updateFeedbackStatus } from "@/lib/feedback";
 import { prepareScanImages } from "@/lib/image-processing";
-import { clinicalModules, getEnabledModuleIds } from "@/lib/modules";
+import { getEnabledModuleIds } from "@/lib/modules";
 import { downloadPublicReportPdf, downloadReportPdf } from "@/lib/pdf";
 import { changePatientAccessPassword, checkPublicReport, getPatientAccessId, getPatientCurrentAccessPassword, sendFeedbackEmail, sendReportAccessEmail, type PublicReport, type PublicReportResult } from "@/lib/report-access";
 import { getReportTemplates, reportTemplates, saveReportTemplates } from "@/lib/report-templates";
 import type { DiseaseClass, EyeSide, FeedbackEntry, Gender, Patient, Report, Role, Scan } from "@/lib/types";
 
 const diseaseClasses: DiseaseClass[] = ["CNV", "DME", "DRUSEN", "NORMAL"];
-
-const moduleStatusLabels = {
-  live: "Live",
-  training: "Training",
-  awaiting_model: "Awaiting API"
-};
 
 const MIN_PATIENT_AGE = 0;
 const MAX_PATIENT_AGE = 130;
@@ -243,14 +237,14 @@ export function LoginView() {
     <main className="grid min-h-screen bg-slate-50 lg:grid-cols-[1fr_520px]">
       <section className="hidden bg-[linear-gradient(135deg,#0f6170,#2563eb)] px-14 py-16 text-white lg:flex lg:flex-col lg:justify-between">
         <div>
-          <p className="mb-8 text-sm font-bold uppercase tracking-[0.18em] text-white/70">OCT Report Assistant</p>
-          <h1 className="max-w-xl text-4xl font-black leading-tight">Clinical OCT reporting workspace.</h1>
+          <p className="mb-8 text-sm font-bold uppercase tracking-[0.18em] text-white/70">AFIO AI Platform</p>
+          <h1 className="max-w-xl text-4xl font-black leading-tight">Clinical AI workflow system for ophthalmology.</h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-white/82">
-            Manage patient records, OCT scan analysis, report drafts, and clinician approval in one controlled workflow.
+            Open licensed diagnostic modules, keep department records separated, and route each report through doctor review.
           </p>
         </div>
         <div className="grid grid-cols-2 gap-3 text-sm">
-          {["Patient records", "OCT analysis", "Doctor review", "Approved reports"].map((item) => (
+          {["Licensed modules", "Separate departments", "Doctor review", "Approved reports"].map((item) => (
             <div key={item} className="rounded-lg border border-white/14 bg-white/10 p-4 font-bold backdrop-blur">{item}</div>
           ))}
         </div>
@@ -259,7 +253,7 @@ export function LoginView() {
         <Card className="w-full max-w-md p-6">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-clinic-700">Secure clinical workspace</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-clinic-700">AFIO secure access</p>
               <h2 className="mt-2 text-2xl font-black text-slate-950">{authMode === "signin" ? "Sign in" : "Create account"}</h2>
             </div>
             <Button className="shrink-0" variant="secondary" onClick={() => setFeedbackOpen(true)}>
@@ -527,8 +521,143 @@ function AuthCard({ title, subtitle, action }: { title: string; subtitle: string
 
 export function DashboardView() {
   const store = useDemoStore();
-  const [feedbackCount, setFeedbackCount] = useState(0);
   const enabledModuleIds = new Set(getEnabledModuleIds());
+  const [accessKey, setAccessKey] = useState("");
+  const [accessMessage, setAccessMessage] = useState("");
+  const platformModules = [
+    {
+      id: "oct-vkg",
+      enabled: enabledModuleIds.has("oct") || enabledModuleIds.has("vkg"),
+      title: "OCT + VKG Report Generation",
+      owner: "Group 1",
+      route: "/modules/oct-vkg",
+      status: "Live",
+      summary: "Patient workflow, OCT analysis, VKG report drafting, doctor review, and approved PDF reports.",
+      accessHint: "Included in the current AFIO demo package."
+    },
+    {
+      id: "corneal",
+      enabled: enabledModuleIds.has("corneal"),
+      title: "Corneal / VKG Detection",
+      owner: "Group 2",
+      route: "/modules/corneal",
+      status: "Model ready",
+      summary: "Keratoconus/corneal screening engine exposed as a separate API and report result module.",
+      accessHint: "Enter a Corneal module access key after the hospital purchases this model."
+    },
+    {
+      id: "retina",
+      enabled: enabledModuleIds.has("retina"),
+      title: "Retinal Fundus Screening",
+      owner: "Group 3",
+      route: "/modules/retina",
+      status: "Awaiting API",
+      summary: "Retinal/fundus disease screening module for DR, glaucoma-style findings, and report output.",
+      accessHint: "Enable after Group 3 provides their model/API."
+    }
+  ];
+  const enabledCount = platformModules.filter((module) => module.enabled).length;
+  const lockedCount = platformModules.length - enabledCount;
+
+  const activateDemoKey = () => {
+    if (!accessKey.trim()) {
+      setAccessMessage("Enter a module access key or API license code.");
+      return;
+    }
+    setAccessMessage("Access key captured for admin review. In production this validates against clinic_modules/module_api_keys.");
+  };
+
+  return (
+    <>
+      <PageTitle
+        title="AFIO Platform Dashboard"
+        subtitle="Choose a licensed AI module. Patients, scans, reports, feedback, and API keys stay scoped to the selected department."
+      />
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="p-5">
+          <p className="text-sm font-semibold text-slate-500">Enabled modules</p>
+          <p className="mt-2 text-3xl font-black text-slate-950">{enabledCount}</p>
+        </Card>
+        <Card className="p-5">
+          <p className="text-sm font-semibold text-slate-500">Locked modules</p>
+          <p className="mt-2 text-3xl font-black text-slate-950">{lockedCount}</p>
+        </Card>
+        <Card className="p-5">
+          <p className="text-sm font-semibold text-slate-500">Clinic workspace</p>
+          <p className="mt-2 text-lg font-black text-slate-950">{store.currentUser.clinicName ?? "AFIO Demo Clinic"}</p>
+        </Card>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-3">
+        {platformModules.map((module) => {
+          return (
+            <Card key={module.id} className="p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase text-slate-500">{module.owner}</p>
+                  <h3 className="mt-1 text-xl font-black text-slate-950">{module.title}</h3>
+                </div>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-black ${module.enabled ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>
+                  {module.enabled ? "Enabled" : "Locked"}
+                </span>
+              </div>
+              <p className="mt-4 min-h-24 text-sm leading-6 text-slate-600">{module.summary}</p>
+              <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                <span className="text-xs font-black uppercase text-slate-500">{module.status}</span>
+                {module.enabled ? (
+                  <Link href={module.route}>
+                    <Button variant="secondary">Open Module</Button>
+                  </Link>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-sm font-bold text-slate-400">
+                    <LockKeyhole size={14} />
+                    Needs key
+                  </span>
+                )}
+              </div>
+              {!module.enabled ? <p className="mt-3 text-xs font-semibold text-slate-500">{module.accessHint}</p> : null}
+            </Card>
+          );
+        })}
+      </div>
+
+      <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_360px]">
+        <Card className="p-5">
+          <CardHeader title="How module access works" subtitle="This is the access model we will connect to Supabase module_api_keys." />
+          <div className="grid gap-3 md:grid-cols-3">
+            {[
+              ["1", "Hospital buys module", "Admin enables OCT/VKG, Corneal, Retina, or all three."],
+              ["2", "API key is attached", "Each module points to its own Render/model service."],
+              ["3", "Data stays separated", "Patients, reports, feedback, and templates are filtered by department."]
+            ].map(([step, title, body]) => (
+              <div key={step} className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-black text-clinic-700">STEP {step}</p>
+                <p className="mt-2 font-black text-slate-950">{title}</p>
+                <p className="mt-1 text-sm leading-6 text-slate-600">{body}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+        <Card className="p-5">
+          <CardHeader title="Activate module" subtitle="Demo access-key capture before backend validation." />
+          <label className="block">
+            <span className="label">Module access key</span>
+            <input className="field mt-1" value={accessKey} onChange={(event) => setAccessKey(event.target.value)} placeholder="AFIO-MODULE-KEY" />
+          </label>
+          <Button className="mt-4 w-full" onClick={activateDemoKey}>
+            <LockKeyhole size={16} />
+            Validate Access
+          </Button>
+          {accessMessage ? <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-600">{accessMessage}</p> : null}
+        </Card>
+      </div>
+    </>
+  );
+}
+
+export function OctVkgModuleView() {
+  const store = useDemoStore();
+  const [feedbackCount, setFeedbackCount] = useState(0);
   const pending = store.data.reports.filter((report) => report.status !== "approved").length;
   const approved = store.data.reports.filter((report) => report.status === "approved").length;
   const today = new Date().toISOString().slice(0, 10);
@@ -547,19 +676,19 @@ export function DashboardView() {
     };
   }, []);
   const stats = [
-    ["Total patients", store.data.patients.length],
-    ["Total scans", store.data.scans.length],
+    ["Department patients", store.data.patients.length],
+    ["OCT/VKG uploads", store.data.scans.length],
     ["Pending reports", pending],
     ["Approved reports", approved],
     ["Reports today", todayReports],
-    ["Open feedback", feedbackCount]
+    ["Department feedback", feedbackCount]
   ];
 
   return (
     <>
       <PageTitle
-        title="AFIO Clinical Modules"
-        subtitle="Hospitals only see the AI services enabled for their license. Each department keeps its own patients, scans, and reports unless a doctor links records intentionally."
+        title="OCT + VKG Report Generation"
+        subtitle="Purchased Group 1 module for OCT analysis, VKG report drafting, doctor review, and approved report delivery."
         action={
           <div className="grid gap-2 sm:flex">
             <Link href="/patients/new" className="block">
@@ -571,55 +700,19 @@ export function DashboardView() {
             <Link href="/scans/upload" className="block">
               <Button className="w-full" variant="secondary">
                 <Upload size={16} />
-                Upload Scan
+                Upload OCT
               </Button>
             </Link>
             <Link href="/reports/history" className="block">
               <Button className="w-full" variant="secondary">
                 <ClipboardCheck size={16} />
-                Check Reports
+                Reports
               </Button>
             </Link>
           </div>
         }
       />
       <SafetyNotice />
-      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {clinicalModules.map((module) => {
-          const enabled = enabledModuleIds.has(module.id);
-          const Icon = module.icon;
-          return (
-            <Card key={module.id} className="p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className={`flex h-11 w-11 items-center justify-center rounded-md ring-1 ${module.accent}`}>
-                  <Icon size={22} />
-                </div>
-                <span className={`rounded-full px-2.5 py-1 text-xs font-black ${enabled ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>
-                  {enabled ? "Enabled" : "Locked"}
-                </span>
-              </div>
-              <div className="mt-4">
-                <p className="text-xs font-bold uppercase text-slate-500">{module.department}</p>
-                <h3 className="mt-1 text-lg font-black text-slate-950">{module.name}</h3>
-                <p className="mt-2 min-h-16 text-sm leading-6 text-slate-600">{module.description}</p>
-              </div>
-              <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
-                <span className="text-xs font-black uppercase text-slate-500">{moduleStatusLabels[module.status]}</span>
-                {enabled && module.route ? (
-                  <Link href={module.route} className="text-sm font-black text-clinic-700 hover:text-clinic-800">
-                    Open
-                  </Link>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-sm font-bold text-slate-400">
-                    <LockKeyhole size={14} />
-                    No access
-                  </span>
-                )}
-              </div>
-            </Card>
-          );
-        })}
-      </div>
       <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         {stats.map(([label, value]) => (
           <Card key={label} className="p-5">
@@ -630,7 +723,7 @@ export function DashboardView() {
       </div>
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <Card>
-          <CardHeader title="Recent Patients" subtitle="Open a patient profile to view scans and report history." />
+          <CardHeader title="Recent OCT/VKG Patients" subtitle="This list belongs to the OCT/VKG department scope." />
           <div className="divide-y divide-slate-100">
             {store.data.patients.slice(0, 5).map((patient) => (
               <Link key={patient.id} href={`/patients/${patient.id}`} className="flex items-center justify-between px-5 py-4 hover:bg-slate-50">
@@ -644,8 +737,46 @@ export function DashboardView() {
           </div>
         </Card>
         <Card>
-          <CardHeader title="Recent Reports" subtitle="Reports stay clearly separated by review status." />
+          <CardHeader title="Recent OCT/VKG Reports" subtitle="Reports from other departments should not appear here." />
           <ReportRows reports={store.data.reports.slice(0, 5)} />
+        </Card>
+      </div>
+    </>
+  );
+}
+
+export function LockedModuleView({ moduleName, owner, description }: { moduleName: string; owner: string; description: string }) {
+  const [accessKey, setAccessKey] = useState("");
+  const [message, setMessage] = useState("");
+  return (
+    <>
+      <PageTitle title={moduleName} subtitle={`${owner} module. Access is controlled by hospital license and module API key.`} />
+      <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
+        <Card className="p-5">
+          <CardHeader title="Module locked" subtitle={description} />
+          <div className="grid gap-3 md:grid-cols-3">
+            {["Separate patients", "Separate reports", "Separate feedback"].map((item) => (
+              <div key={item} className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-700">{item}</div>
+            ))}
+          </div>
+          <p className="mt-5 text-sm leading-6 text-slate-600">
+            When this module is enabled, its own patient list, upload flow, AI result page, report templates, feedback inbox, and API key will be scoped by department.
+          </p>
+        </Card>
+        <Card className="p-5">
+          <CardHeader title="Enter access key" subtitle="Demo activation UI before Supabase validation." />
+          <label className="block">
+            <span className="label">Access/API key</span>
+            <input className="field mt-1" value={accessKey} onChange={(event) => setAccessKey(event.target.value)} placeholder="AFIO-CORNEAL-..." />
+          </label>
+          <Button
+            className="mt-4 w-full"
+            onClick={() => setMessage(accessKey.trim() ? "Key captured. Admin validation will enable this module for the clinic." : "Enter an access key first.")}
+          >
+            <LockKeyhole size={16} />
+            Request Access
+          </Button>
+          {message ? <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-600">{message}</p> : null}
         </Card>
       </div>
     </>

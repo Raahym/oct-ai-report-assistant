@@ -67,6 +67,9 @@ alter table reports add column if not exists clinic_id uuid references clinics(i
 alter table reports add column if not exists department_id uuid references departments(id);
 alter table reports add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'retina'));
 alter table if exists report_templates add column if not exists module_id text default 'oct' check (module_id in ('oct', 'vkg', 'corneal', 'retina'));
+alter table if exists feedback_entries add column if not exists clinic_id uuid references clinics(id);
+alter table if exists feedback_entries add column if not exists department_id uuid references departments(id);
+alter table if exists feedback_entries add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'retina'));
 
 insert into clinics (name, code)
 values ('AFIO Demo Clinic', 'AFIO-DEMO')
@@ -141,6 +144,23 @@ update ai_results
 set module_id = 'oct'
 where module_id is null;
 
+do $$
+begin
+  if to_regclass('public.feedback_entries') is not null then
+    update feedback_entries
+    set
+      clinic_id = (select id from clinics where code = 'AFIO-DEMO'),
+      department_id = (
+        select departments.id
+        from departments
+        join clinics on clinics.id = departments.clinic_id
+        where clinics.code = 'AFIO-DEMO' and departments.module_id = 'oct'
+      ),
+      module_id = 'oct'
+    where clinic_id is null or department_id is null or module_id is null;
+  end if;
+end $$;
+
 insert into department_users (department_id, user_id, role, can_view_all)
 select departments.id, profiles.id, profiles.role, profiles.role = 'admin'
 from profiles
@@ -151,6 +171,13 @@ create index if not exists idx_patients_department on patients(department_id);
 create index if not exists idx_scans_department_module on scans(department_id, module_id);
 create index if not exists idx_reports_department_module on reports(department_id, module_id);
 create index if not exists idx_department_users_user on department_users(user_id);
+
+do $$
+begin
+  if to_regclass('public.feedback_entries') is not null then
+    execute 'create index if not exists idx_feedback_department_module on feedback_entries(department_id, module_id)';
+  end if;
+end $$;
 
 alter table clinics enable row level security;
 alter table departments enable row level security;

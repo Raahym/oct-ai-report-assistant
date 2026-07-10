@@ -6,16 +6,15 @@ import { useEffect } from "react";
 import { clsx } from "clsx";
 import {
   ClipboardList,
-  FileClock,
   Inbox,
   KeyRound,
   LayoutDashboard,
   LogOut,
-  Search,
   ShieldCheck,
-  Upload,
+  ScanEye,
   UserCog,
-  UserPlus
+  Activity,
+  Eye
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useDemoStore } from "@/lib/demo-store";
@@ -23,11 +22,10 @@ import { getEnabledModules } from "@/lib/modules";
 import { Button } from "./ui";
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/patients/new", label: "New Patient", icon: UserPlus },
-  { href: "/patients/search", label: "Search Patient", icon: Search },
-  { href: "/scans/upload", label: "Upload Scan", icon: Upload },
-  { href: "/reports/history", label: "Report History", icon: FileClock },
+  { href: "/dashboard", label: "AFIO Dashboard", icon: LayoutDashboard },
+  { href: "/modules/oct-vkg", label: "OCT + VKG Reports", icon: ScanEye },
+  { href: "/modules/corneal", label: "Corneal Detection", icon: Activity },
+  { href: "/modules/retina", label: "Retinal Screening", icon: Eye },
   { href: "/change-password", label: "Change Password", icon: KeyRound }
 ];
 
