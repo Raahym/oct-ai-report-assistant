@@ -8,9 +8,31 @@ create table if not exists clinics (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   code text unique not null,
+  admin_email text,
+  subscription_status text default 'trial' check (subscription_status in ('trial', 'active', 'past_due', 'suspended')),
   is_active boolean default true,
+  allow_self_signup boolean default true,
   created_at timestamptz default now()
 );
+
+alter table clinics add column if not exists admin_email text;
+alter table clinics add column if not exists subscription_status text default 'trial' check (subscription_status in ('trial', 'active', 'past_due', 'suspended'));
+alter table clinics add column if not exists allow_self_signup boolean default true;
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.constraint_column_usage
+    where table_name = 'profiles' and constraint_name like '%role%'
+  ) then
+    alter table profiles drop constraint if exists profiles_role_check;
+  end if;
+end $$;
+
+alter table profiles add constraint profiles_role_check check (role in ('afio_admin', 'hospital_admin', 'admin', 'doctor', 'assistant'));
+update profiles set role = 'hospital_admin' where role = 'admin' and lower(email) <> 'raahymm@gmail.com';
+update profiles set role = 'afio_admin', is_active = true where lower(email) = 'raahymm@gmail.com';
 
 create table if not exists departments (
   id uuid primary key default gen_random_uuid(),
@@ -72,8 +94,11 @@ alter table if exists feedback_entries add column if not exists department_id uu
 alter table if exists feedback_entries add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'retina'));
 
 insert into clinics (name, code)
-values ('AFIO Demo Clinic', 'AFIO-DEMO')
-on conflict (code) do nothing;
+values
+  ('AFIO Demo Clinic', 'AFIO-DEMO'),
+  ('Shifa', 'SHIFA'),
+  ('Al Noor', 'ALNOOR')
+on conflict (code) do update set name = excluded.name;
 
 with demo_clinic as (
   select id from clinics where code = 'AFIO-DEMO'
@@ -83,6 +108,24 @@ select id, module_id, true, 'group-1-demo'
 from demo_clinic
 cross join (values ('oct'), ('vkg')) as enabled(module_id)
 on conflict (clinic_id, module_id) do nothing;
+
+with shifa as (
+  select id from clinics where code = 'SHIFA'
+)
+insert into clinic_modules (clinic_id, module_id, is_enabled, package_name)
+select id, module_id, true, 'shifa-demo'
+from shifa
+cross join (values ('oct'), ('vkg'), ('corneal')) as enabled(module_id)
+on conflict (clinic_id, module_id) do update set is_enabled = true;
+
+with alnoor as (
+  select id from clinics where code = 'ALNOOR'
+)
+insert into clinic_modules (clinic_id, module_id, is_enabled, package_name)
+select id, module_id, true, 'trial'
+from alnoor
+cross join (values ('oct')) as enabled(module_id)
+on conflict (clinic_id, module_id) do update set is_enabled = true;
 
 with demo_clinic as (
   select id from clinics where code = 'AFIO-DEMO'

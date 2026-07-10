@@ -30,11 +30,11 @@ import { predictOCT } from "@/lib/ai-api";
 import { useDemoStore } from "@/lib/demo-store";
 import { addFeedbackResponse, getCachedFeedbackEntries, getFeedbackEntries, submitFeedback, updateFeedbackStatus } from "@/lib/feedback";
 import { prepareScanImages } from "@/lib/image-processing";
-import { getEnabledModuleIds } from "@/lib/modules";
+import { getModulesByIds } from "@/lib/modules";
 import { downloadPublicReportPdf, downloadReportPdf } from "@/lib/pdf";
 import { changePatientAccessPassword, checkPublicReport, getPatientAccessId, getPatientCurrentAccessPassword, sendFeedbackEmail, sendReportAccessEmail, type PublicReport, type PublicReportResult } from "@/lib/report-access";
 import { getReportTemplates, reportTemplates, saveReportTemplates } from "@/lib/report-templates";
-import type { DiseaseClass, EyeSide, FeedbackEntry, Gender, Patient, Report, Role, Scan } from "@/lib/types";
+import type { DiseaseClass, EyeSide, FeedbackEntry, Gender, ModuleId, Patient, Report, Role, Scan } from "@/lib/types";
 
 const diseaseClasses: DiseaseClass[] = ["CNV", "DME", "DRUSEN", "NORMAL"];
 
@@ -193,6 +193,7 @@ export function LoginView() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [requestedRole, setRequestedRole] = useState<Role>("doctor");
+  const [hospitalId, setHospitalId] = useState("");
   const [department, setDepartment] = useState("");
   const [doctorId, setDoctorId] = useState("");
   const [error, setError] = useState("");
@@ -209,11 +210,17 @@ export function LoginView() {
     setLoading(true);
     try {
       if (authMode === "signup") {
+        if (!hospitalId) {
+          setError("Select your registered hospital.");
+          setLoading(false);
+          return;
+        }
         await store.signUp({
           email,
           password,
           fullName: fullName || email.split("@")[0],
           role: requestedRole,
+          hospitalId,
           department,
           doctorId
         });
@@ -309,12 +316,21 @@ export function LoginView() {
                   <select className="field mt-1" value={requestedRole} onChange={(event) => setRequestedRole(event.target.value as Role)}>
                     <option value="doctor">Doctor</option>
                     <option value="assistant">Assistant / Technician</option>
-                    <option value="admin">Admin / Records Staff</option>
+                    <option value="hospital_admin">Hospital Admin / Records Staff</option>
                   </select>
                 </div>
                 <div>
-                  <label className="label">Hospital / department</label>
-                  <input className="field mt-1" value={department} onChange={(event) => setDepartment(event.target.value)} />
+                  <label className="label">Registered hospital</label>
+                  <select className="field mt-1" value={hospitalId} onChange={(event) => setHospitalId(event.target.value)}>
+                    <option value="">Select hospital</option>
+                    {store.signupHospitals.map((hospital) => (
+                      <option key={hospital.id} value={hospital.id}>{hospital.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Department requested</label>
+                  <input className="field mt-1" value={department} placeholder="OCT, VKG, Corneal, Retina..." onChange={(event) => setDepartment(event.target.value)} />
                 </div>
                 {requestedRole === "doctor" ? (
                   <div>
@@ -521,13 +537,13 @@ function AuthCard({ title, subtitle, action }: { title: string; subtitle: string
 
 export function DashboardView() {
   const store = useDemoStore();
-  const enabledModuleIds = new Set(getEnabledModuleIds());
+  const visibleModuleIds = new Set(store.visibleModuleIds);
   const [accessKey, setAccessKey] = useState("");
   const [accessMessage, setAccessMessage] = useState("");
   const platformModules = [
     {
       id: "oct-vkg",
-      enabled: enabledModuleIds.has("oct") || enabledModuleIds.has("vkg"),
+      enabled: visibleModuleIds.has("oct") || visibleModuleIds.has("vkg"),
       title: "OCT + VKG Report Generation",
       owner: "Group 1",
       route: "/modules/oct-vkg",
@@ -537,7 +553,7 @@ export function DashboardView() {
     },
     {
       id: "corneal",
-      enabled: enabledModuleIds.has("corneal"),
+      enabled: visibleModuleIds.has("corneal"),
       title: "Corneal / VKG Detection",
       owner: "Group 2",
       route: "/modules/corneal",
@@ -547,7 +563,7 @@ export function DashboardView() {
     },
     {
       id: "retina",
-      enabled: enabledModuleIds.has("retina"),
+      enabled: visibleModuleIds.has("retina"),
       title: "Retinal Fundus Screening",
       owner: "Group 3",
       route: "/modules/retina",
@@ -556,8 +572,9 @@ export function DashboardView() {
       accessHint: "Enable after Group 3 provides their model/API."
     }
   ];
-  const enabledCount = platformModules.filter((module) => module.enabled).length;
-  const lockedCount = platformModules.length - enabledCount;
+  const visibleModules = store.currentUser.role === "afio_admin" ? platformModules : platformModules.filter((module) => module.enabled);
+  const enabledCount = visibleModules.filter((module) => module.enabled).length;
+  const hospital = store.currentHospital;
 
   const activateDemoKey = () => {
     if (!accessKey.trim()) {
@@ -571,7 +588,7 @@ export function DashboardView() {
     <>
       <PageTitle
         title="AFIO Platform Dashboard"
-        subtitle="Choose a licensed AI module. Patients, scans, reports, feedback, and API keys stay scoped to the selected department."
+        subtitle={store.currentUser.role === "afio_admin" ? "Business admin preview. Hospitals only see the modules enabled on their subscription." : "Choose one of your hospital's purchased AI modules. Patients, scans, reports, feedback, and API keys stay scoped to the selected department."}
       />
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="p-5">
@@ -579,17 +596,17 @@ export function DashboardView() {
           <p className="mt-2 text-3xl font-black text-slate-950">{enabledCount}</p>
         </Card>
         <Card className="p-5">
-          <p className="text-sm font-semibold text-slate-500">Locked modules</p>
-          <p className="mt-2 text-3xl font-black text-slate-950">{lockedCount}</p>
+          <p className="text-sm font-semibold text-slate-500">Subscription</p>
+          <p className="mt-2 text-3xl font-black capitalize text-slate-950">{hospital?.subscriptionStatus ?? "AFIO"}</p>
         </Card>
         <Card className="p-5">
           <p className="text-sm font-semibold text-slate-500">Clinic workspace</p>
-          <p className="mt-2 text-lg font-black text-slate-950">{store.currentUser.clinicName ?? "AFIO Demo Clinic"}</p>
+          <p className="mt-2 text-lg font-black text-slate-950">{hospital?.name ?? store.currentUser.clinicName ?? "AFIO Platform"}</p>
         </Card>
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-3">
-        {platformModules.map((module) => {
+        {visibleModules.map((module) => {
           return (
             <Card key={module.id} className="p-5">
               <div className="flex items-start justify-between gap-3">
@@ -615,10 +632,11 @@ export function DashboardView() {
                   </span>
                 )}
               </div>
-              {!module.enabled ? <p className="mt-3 text-xs font-semibold text-slate-500">{module.accessHint}</p> : null}
+              {store.currentUser.role === "afio_admin" && !module.enabled ? <p className="mt-3 text-xs font-semibold text-slate-500">{module.accessHint}</p> : null}
             </Card>
           );
         })}
+        {visibleModules.length === 0 ? <EmptyState title="No modules enabled" body="Ask the hospital admin or AFIO business admin to enable a purchased service." /> : null}
       </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_360px]">
@@ -638,7 +656,7 @@ export function DashboardView() {
             ))}
           </div>
         </Card>
-        <Card className="p-5">
+        {store.currentUser.role === "afio_admin" || store.currentUser.role === "hospital_admin" || store.currentUser.role === "admin" ? <Card className="p-5">
           <CardHeader title="Activate module" subtitle="Demo access-key capture before backend validation." />
           <label className="block">
             <span className="label">Module access key</span>
@@ -649,7 +667,7 @@ export function DashboardView() {
             Validate Access
           </Button>
           {accessMessage ? <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-600">{accessMessage}</p> : null}
-        </Card>
+        </Card> : null}
       </div>
     </>
   );
@@ -778,6 +796,114 @@ export function LockedModuleView({ moduleName, owner, description }: { moduleNam
           </Button>
           {message ? <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-600">{message}</p> : null}
         </Card>
+      </div>
+    </>
+  );
+}
+
+export function AfioBusinessAdminView() {
+  const store = useDemoStore();
+  const [error, setError] = useState("");
+  const allModuleIds: ModuleId[] = ["oct", "vkg", "corneal", "retina"];
+  const moduleNames: Record<ModuleId, string> = {
+    oct: "OCT",
+    vkg: "VKG",
+    corneal: "Corneal",
+    retina: "Retina"
+  };
+
+  const updateHospital = (hospitalId: string, input: Parameters<typeof store.updateHospitalAccess>[1]) => {
+    setError("");
+    try {
+      store.updateHospitalAccess(hospitalId, input);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update hospital.");
+    }
+  };
+
+  if (store.currentUser.role !== "afio_admin") {
+    return <EmptyState title="AFIO admin only" body="This page controls business access, subscriptions, and module availability." />;
+  }
+
+  return (
+    <>
+      <PageTitle
+        title="AFIO Business Admin"
+        subtitle="Manage hospitals, subscriptions, module access, and service status. This area intentionally has no patients or clinical reports."
+      />
+      {error ? <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card className="p-5">
+          <p className="text-sm font-semibold text-slate-500">Hospitals</p>
+          <p className="mt-2 text-3xl font-black text-slate-950">{store.data.hospitals.length}</p>
+        </Card>
+        <Card className="p-5">
+          <p className="text-sm font-semibold text-slate-500">Active</p>
+          <p className="mt-2 text-3xl font-black text-slate-950">{store.data.hospitals.filter((hospital) => hospital.isActive).length}</p>
+        </Card>
+        <Card className="p-5">
+          <p className="text-sm font-semibold text-slate-500">Suspended</p>
+          <p className="mt-2 text-3xl font-black text-slate-950">{store.data.hospitals.filter((hospital) => hospital.subscriptionStatus === "suspended").length}</p>
+        </Card>
+        <Card className="p-5">
+          <p className="text-sm font-semibold text-slate-500">Module grants</p>
+          <p className="mt-2 text-3xl font-black text-slate-950">{store.data.hospitals.reduce((total, hospital) => total + hospital.enabledModules.length, 0)}</p>
+        </Card>
+      </div>
+      <div className="mt-5 grid gap-5">
+        {store.data.hospitals.map((hospital) => (
+          <Card key={hospital.id} className="p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-xl font-black text-slate-950">{hospital.name}</h3>
+                  <StatusBadge status={hospital.isActive ? "active" : "pending"} />
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black uppercase text-slate-500">{hospital.subscriptionStatus}</span>
+                </div>
+                <p className="mt-2 text-sm text-slate-500">Code: {hospital.code} · Admin: {hospital.adminEmail ?? "Not assigned"}</p>
+              </div>
+              <div className="grid gap-2 sm:flex">
+                <select
+                  className="field min-h-10 py-2 text-sm font-semibold"
+                  value={hospital.subscriptionStatus}
+                  onChange={(event) => updateHospital(hospital.id, { subscriptionStatus: event.target.value as typeof hospital.subscriptionStatus })}
+                >
+                  <option value="trial">Trial</option>
+                  <option value="active">Active</option>
+                  <option value="past_due">Past due</option>
+                  <option value="suspended">Suspended</option>
+                </select>
+                <Button
+                  variant={hospital.isActive ? "secondary" : "primary"}
+                  onClick={() => updateHospital(hospital.id, { isActive: !hospital.isActive })}
+                >
+                  {hospital.isActive ? "Disable" : "Enable"}
+                </Button>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-3 md:grid-cols-4">
+              {allModuleIds.map((moduleId) => {
+                const enabled = hospital.enabledModules.includes(moduleId);
+                return (
+                  <button
+                    key={moduleId}
+                    className={`rounded-md border p-4 text-left transition ${enabled ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-slate-200 bg-slate-50 text-slate-500"}`}
+                    onClick={() =>
+                      updateHospital(hospital.id, {
+                        enabledModules: enabled
+                          ? hospital.enabledModules.filter((id) => id !== moduleId)
+                          : [...hospital.enabledModules, moduleId]
+                      })
+                    }
+                  >
+                    <p className="text-sm font-black">{moduleNames[moduleId]}</p>
+                    <p className="mt-1 text-xs font-semibold">{enabled ? "Enabled for hospital" : "Hidden from hospital"}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+        ))}
       </div>
     </>
   );
@@ -1232,7 +1358,7 @@ export function AnalysisView({ id }: { id: string }) {
   const patient = store.data.patients.find((item) => item.id === scan.patientId);
   const aiResult = store.data.aiResults.find((item) => item.scanId === scan.id);
   const linkedReport = aiResult ? store.data.reports.find((report) => report.aiResultId === aiResult.id) : undefined;
-  const canManageAnalysis = store.currentUser.role === "doctor" || store.currentUser.role === "admin";
+  const canManageAnalysis = store.currentUser.role === "doctor" || store.currentUser.role === "hospital_admin" || store.currentUser.role === "admin";
   const canManageScan = canManageAnalysis;
 
   const analyzeScan = async () => {
@@ -1422,7 +1548,7 @@ export function ReportEditorView({ id }: { id: string }) {
   const scan = store.data.scans.find((item) => item.id === draft.scanId);
   const ai = store.data.aiResults.find((item) => item.id === draft.aiResultId);
   const canApprove = store.currentUser.role === "doctor";
-  const canManageScan = store.currentUser.role === "doctor" || store.currentUser.role === "admin";
+  const canManageScan = store.currentUser.role === "doctor" || store.currentUser.role === "hospital_admin" || store.currentUser.role === "admin";
   const patientAccessId = patient ? getPatientAccessId(patient) : "";
 
   const save = async (status: Report["status"] = draft.status) => {
@@ -1588,7 +1714,7 @@ export function ReportView({ id }: { id: string }) {
   const ai = store.data.aiResults.find((item) => item.id === report.aiResultId);
   const approver = store.data.profiles.find((item) => item.id === report.approvedBy);
   const canDoctorEdit = store.currentUser.role === "doctor";
-  const canManageScan = store.currentUser.role === "doctor" || store.currentUser.role === "admin";
+  const canManageScan = store.currentUser.role === "doctor" || store.currentUser.role === "hospital_admin" || store.currentUser.role === "admin";
 
   const updateStatus = async (status: Report["status"]) => {
     setError("");
@@ -2063,7 +2189,7 @@ export function FeedbackReviewView({ scope = "admin" }: { scope?: "admin" | "hod
   const [responses, setResponses] = useState<Record<string, string>>({});
   const [responseMessage, setResponseMessage] = useState("");
   const [loading, setLoading] = useState(cachedEntries.length === 0);
-  const canReview = store.currentUser.role === "admin";
+  const canReview = store.currentUser.role === "hospital_admin" || store.currentUser.role === "admin" || store.currentUser.role === "afio_admin";
   const visible = entries.filter((entry) => {
     if (tab === "messages" && !(entry.responses?.length)) return false;
     return filter === "all" || entry.status === filter;
@@ -2238,6 +2364,10 @@ export function AdminUsersView() {
   const store = useDemoStore();
   const [savingId, setSavingId] = useState("");
   const [error, setError] = useState("");
+  const visibleProfiles =
+    store.currentUser.role === "afio_admin"
+      ? store.data.profiles
+      : store.data.profiles.filter((profile) => profile.clinicId === store.currentUser.clinicId);
 
   const updateAccess = async (profileId: string, input: { role?: Role; isActive?: boolean }) => {
     setError("");
@@ -2253,10 +2383,12 @@ export function AdminUsersView() {
 
   return (
     <>
-      <PageTitle title="User Access" subtitle="Approve new doctors, assistants, and admin staff before they can enter the workspace." />
+      <PageTitle title="User Access" subtitle="Approve hospital staff and assign clinical roles. AFIO admins see all hospitals; hospital admins see only their own staff." />
       {error ? <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
       <div className="space-y-3 md:hidden">
-        {store.data.profiles.map((profile) => (
+        {visibleProfiles.map((profile) => {
+          const hospital = store.data.hospitals.find((item) => item.id === profile.clinicId);
+          return (
           <Card key={profile.id} className="p-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -2271,16 +2403,17 @@ export function AdminUsersView() {
                 <select
                   className="field mt-1 py-2 capitalize"
                   value={profile.role}
-                  disabled={savingId === profile.id || profile.email.toLowerCase() === "raahymm@gmail.com"}
+                  disabled={savingId === profile.id || profile.role === "afio_admin"}
                   onChange={(event) => updateAccess(profile.id, { role: event.target.value as Role })}
                 >
                   <option value="doctor">Doctor</option>
                   <option value="assistant">Assistant</option>
-                  <option value="admin">Admin</option>
+                  <option value="hospital_admin">Hospital Admin</option>
                 </select>
               </label>
+              <Info label="Hospital" value={hospital?.name ?? "AFIO Platform"} />
               <Info label="Doctor ID" value={profile.doctorId ?? "-"} />
-              {profile.email.toLowerCase() === "raahymm@gmail.com" ? (
+              {profile.role === "afio_admin" ? (
                 <span className="rounded-md bg-slate-100 px-3 py-2 text-center text-xs font-bold uppercase text-slate-500">Owner</span>
               ) : profile.isActive ? (
                 <Button
@@ -2298,8 +2431,9 @@ export function AdminUsersView() {
               )}
             </div>
           </Card>
-        ))}
-        {store.data.profiles.length === 0 ? <EmptyState title="No account requests yet" body="New signup requests will appear here." /> : null}
+        );
+        })}
+        {visibleProfiles.length === 0 ? <EmptyState title="No account requests yet" body="New signup requests will appear here." /> : null}
       </div>
       <Card className="hidden overflow-hidden md:block">
         <table className="w-full text-left text-sm">
@@ -2308,13 +2442,16 @@ export function AdminUsersView() {
               <th className="px-5 py-3">Name</th>
               <th className="px-5 py-3">Email</th>
               <th className="px-5 py-3">Role</th>
+              <th className="px-5 py-3">Hospital</th>
               <th className="px-5 py-3">Doctor ID</th>
               <th className="px-5 py-3">Status</th>
               <th className="px-5 py-3">Access</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {store.data.profiles.map((profile) => (
+            {visibleProfiles.map((profile) => {
+              const hospital = store.data.hospitals.find((item) => item.id === profile.clinicId);
+              return (
               <tr key={profile.id}>
                 <td className="px-5 py-4 font-bold">{profile.fullName}</td>
                 <td className="px-5 py-4">{profile.email}</td>
@@ -2322,18 +2459,20 @@ export function AdminUsersView() {
                   <select
                     className="field min-w-32 py-2 capitalize"
                     value={profile.role}
-                    disabled={savingId === profile.id || profile.email.toLowerCase() === "raahymm@gmail.com"}
+                    disabled={savingId === profile.id || profile.role === "afio_admin"}
                     onChange={(event) => updateAccess(profile.id, { role: event.target.value as Role })}
                   >
+                    <option value="afio_admin">AFIO Admin</option>
                     <option value="doctor">Doctor</option>
                     <option value="assistant">Assistant</option>
-                    <option value="admin">Admin</option>
+                    <option value="hospital_admin">Hospital Admin</option>
                   </select>
                 </td>
+                <td className="px-5 py-4">{hospital?.name ?? "AFIO Platform"}</td>
                 <td className="px-5 py-4">{profile.doctorId ?? "-"}</td>
                 <td className="px-5 py-4"><StatusBadge status={profile.isActive ? "active" : "pending"} /></td>
                 <td className="px-5 py-4">
-                  {profile.email.toLowerCase() === "raahymm@gmail.com" ? (
+                  {profile.role === "afio_admin" ? (
                     <span className="text-xs font-bold uppercase text-slate-400">Owner</span>
                   ) : profile.isActive ? (
                     <Button
@@ -2350,10 +2489,11 @@ export function AdminUsersView() {
                   )}
                 </td>
               </tr>
-            ))}
-            {store.data.profiles.length === 0 ? (
+            );
+            })}
+            {visibleProfiles.length === 0 ? (
               <tr>
-                <td className="px-5 py-8 text-center text-sm font-semibold text-slate-500" colSpan={6}>
+                <td className="px-5 py-8 text-center text-sm font-semibold text-slate-500" colSpan={7}>
                   No account requests yet.
                 </td>
               </tr>
@@ -2367,7 +2507,7 @@ export function AdminUsersView() {
 
 export function TemplatesView() {
   const store = useDemoStore();
-  const canEditTemplates = store.currentUser.role === "admin" || store.currentUser.role === "doctor";
+  const canEditTemplates = store.currentUser.role === "hospital_admin" || store.currentUser.role === "admin" || store.currentUser.role === "doctor";
   const [templates, setTemplates] = useState(reportTemplates);
   const [saved, setSaved] = useState("");
   const [loading, setLoading] = useState(true);

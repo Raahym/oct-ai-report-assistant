@@ -4,7 +4,7 @@ create table if not exists profiles (
   id uuid primary key references auth.users(id),
   full_name text not null,
   email text not null,
-  role text not null check (role in ('admin', 'doctor', 'assistant')),
+  role text not null check (role in ('afio_admin', 'hospital_admin', 'admin', 'doctor', 'assistant')),
   doctor_id text unique,
   specialization text,
   clinic_name text,

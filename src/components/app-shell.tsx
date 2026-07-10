@@ -18,16 +18,26 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useDemoStore } from "@/lib/demo-store";
-import { getEnabledModules } from "@/lib/modules";
+import { getModulesByIds } from "@/lib/modules";
 import { Button } from "./ui";
 
-const navItems = [
-  { href: "/dashboard", label: "AFIO Dashboard", icon: LayoutDashboard },
-  { href: "/modules/oct-vkg", label: "OCT + VKG Reports", icon: ScanEye },
-  { href: "/modules/corneal", label: "Corneal Detection", icon: Activity },
-  { href: "/modules/retina", label: "Retinal Screening", icon: Eye },
+const businessItems = [
+  { href: "/afio/admin", label: "AFIO Business", icon: ShieldCheck },
+  { href: "/dashboard", label: "Hospital Preview", icon: LayoutDashboard },
   { href: "/change-password", label: "Change Password", icon: KeyRound }
 ];
+
+const baseNavItems = [
+  { href: "/dashboard", label: "AFIO Dashboard", icon: LayoutDashboard },
+  { href: "/change-password", label: "Change Password", icon: KeyRound }
+];
+
+const moduleNavItems = {
+  oct: { href: "/modules/oct-vkg", label: "OCT + VKG Reports", icon: ScanEye },
+  vkg: { href: "/modules/oct-vkg", label: "OCT + VKG Reports", icon: ScanEye },
+  corneal: { href: "/modules/corneal", label: "Corneal Detection", icon: Activity },
+  retina: { href: "/modules/retina", label: "Retinal Screening", icon: Eye }
+};
 
 const doctorItems = [
   { href: "/admin/templates", label: "Templates", icon: ClipboardList }
@@ -93,8 +103,17 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const items = store.currentUser.role === "admin" ? [...navItems, ...adminItems] : store.currentUser.role === "doctor" ? [...navItems, ...doctorItems] : navItems;
-  const enabledModules = getEnabledModules();
+  const visibleModuleItems = Array.from(new Map(store.visibleModuleIds.map((id) => [moduleNavItems[id].href, moduleNavItems[id]])).values());
+  const navItems = store.currentUser.role === "afio_admin" ? businessItems : [baseNavItems[0], ...visibleModuleItems, baseNavItems[1]];
+  const items =
+    store.currentUser.role === "afio_admin"
+      ? navItems
+      : store.currentUser.role === "hospital_admin" || store.currentUser.role === "admin"
+        ? [...navItems, ...adminItems]
+        : store.currentUser.role === "doctor"
+          ? [...navItems, ...doctorItems]
+          : navItems;
+  const enabledModules = getModulesByIds(store.visibleModuleIds);
   const moduleLabel = enabledModules.map((module) => module.shortName).join(" + ");
 
   return (
@@ -104,7 +123,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <EyeDepartmentLogo />
           <div>
             <p className="text-sm font-black text-slate-950">AFIO AI Platform</p>
-            <p className="text-xs font-medium text-slate-500">{moduleLabel} access</p>
+            <p className="text-xs font-medium text-slate-500">{store.currentUser.role === "afio_admin" ? "Business control" : `${moduleLabel} access`}</p>
           </div>
         </div>
         <nav className="space-y-1 p-4 pb-32">
@@ -137,8 +156,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur md:px-8">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-clinic-700">Clinical workspace</p>
-              <h1 className="text-xl font-black text-slate-950">AFIO AI Report Platform</h1>
+              <p className="text-xs font-bold uppercase tracking-wide text-clinic-700">{store.currentUser.role === "afio_admin" ? "Business workspace" : "Clinical workspace"}</p>
+              <h1 className="text-xl font-black text-slate-950">{store.currentUser.role === "afio_admin" ? "AFIO Access Control" : "AFIO AI Report Platform"}</h1>
             </div>
             <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
               <select

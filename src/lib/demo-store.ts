@@ -12,6 +12,8 @@ import type {
   BackendPrediction,
   DiseaseClass,
   EyeSide,
+  Hospital,
+  ModuleId,
   Patient,
   Profile,
   Report,
@@ -25,15 +27,65 @@ const SUPER_ADMIN_EMAIL = "raahymm@gmail.com";
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 
+const AFIO_DEMO_HOSPITAL_ID = "hospital_afio_demo";
+const SHIFA_HOSPITAL_ID = "hospital_shifa";
+const ALNOOR_HOSPITAL_ID = "hospital_alnoor";
+
+const demoHospitals: Hospital[] = [
+  {
+    id: AFIO_DEMO_HOSPITAL_ID,
+    name: "AFIO Demo Clinic",
+    code: "AFIO-DEMO",
+    adminEmail: "admin@octai.local",
+    subscriptionStatus: "active",
+    isActive: true,
+    allowSelfSignup: true,
+    enabledModules: ["oct", "vkg"],
+    createdAt: "2026-07-10T10:00:00.000Z"
+  },
+  {
+    id: SHIFA_HOSPITAL_ID,
+    name: "Shifa",
+    code: "SHIFA",
+    adminEmail: "shifa.admin@example.com",
+    subscriptionStatus: "active",
+    isActive: true,
+    allowSelfSignup: true,
+    enabledModules: ["oct", "vkg", "corneal"],
+    createdAt: "2026-07-10T10:05:00.000Z"
+  },
+  {
+    id: ALNOOR_HOSPITAL_ID,
+    name: "Al Noor",
+    code: "ALNOOR",
+    adminEmail: "alnoor.admin@example.com",
+    subscriptionStatus: "trial",
+    isActive: true,
+    allowSelfSignup: true,
+    enabledModules: ["oct"],
+    createdAt: "2026-07-10T10:10:00.000Z"
+  }
+];
+
 const demoProfiles: Profile[] = [
+  {
+    id: "user_afio_admin",
+    fullName: "AFIO Platform Admin",
+    email: "raahymm@gmail.com",
+    role: "afio_admin",
+    specialization: "Business and access control",
+    clinicName: "AFIO Platform",
+    isActive: true
+  },
   {
     id: "user_admin",
     fullName: "Dr. Asad Ullah",
     email: "admin@octai.local",
-    role: "admin",
+    role: "hospital_admin",
     doctorId: "NUST-ADM-01",
     specialization: "Ophthalmology AI Program",
-    clinicName: "Military College of Signals, NUST",
+    clinicName: "AFIO Demo Clinic",
+    clinicId: AFIO_DEMO_HOSPITAL_ID,
     isActive: true
   },
   {
@@ -43,7 +95,8 @@ const demoProfiles: Profile[] = [
     role: "doctor",
     doctorId: "RET-204",
     specialization: "Retina",
-    clinicName: "MCS Clinical Imaging Lab",
+    clinicName: "AFIO Demo Clinic",
+    clinicId: AFIO_DEMO_HOSPITAL_ID,
     isActive: true
   },
   {
@@ -52,7 +105,8 @@ const demoProfiles: Profile[] = [
     email: "assistant@octai.local",
     role: "assistant",
     specialization: "OCT Technician",
-    clinicName: "MCS Clinical Imaging Lab",
+    clinicName: "AFIO Demo Clinic",
+    clinicId: AFIO_DEMO_HOSPITAL_ID,
     isActive: true
   }
 ];
@@ -64,6 +118,7 @@ const reportId = "report_demo_1";
 
 export const seedData: AppData = {
   currentUserId: "user_doctor",
+  hospitals: demoHospitals,
   profiles: demoProfiles,
   patients: [
     {
@@ -79,6 +134,7 @@ export const seedData: AppData = {
       diabetesHistory: "Yes",
       previousEyeDisease: "Mild diabetic retinopathy history",
       clinicalNotes: "Reduced central vision in right eye for two weeks.",
+      clinicId: AFIO_DEMO_HOSPITAL_ID,
       createdBy: "user_doctor",
       createdAt: "2026-06-30T14:15:00.000Z",
       updatedAt: "2026-06-30T14:15:00.000Z"
@@ -94,6 +150,8 @@ export const seedData: AppData = {
       scanType: "OCT",
       eyeSide: "Right",
       scanNotes: "Macular cube OCT uploaded for demo analysis.",
+      clinicId: AFIO_DEMO_HOSPITAL_ID,
+      moduleId: "oct",
       uploadedBy: "user_assistant",
       createdAt: "2026-06-30T14:20:00.000Z"
     }
@@ -108,6 +166,7 @@ export const seedData: AppData = {
       modelName: "EfficientNet-B0",
       modelVersion: "demo-v1.0",
       isDummyResult: true,
+      moduleId: "oct",
       createdAt: "2026-06-30T14:21:00.000Z"
     }
   ],
@@ -120,6 +179,8 @@ export const seedData: AppData = {
       ...reportTemplates.DME,
       doctorNotes: "Review OCT with visual acuity and diabetic history before treatment planning.",
       finalDiagnosis: "Needs clinical correlation",
+      clinicId: AFIO_DEMO_HOSPITAL_ID,
+      moduleId: "oct",
       status: "pending_review",
       createdBy: "user_doctor",
       createdAt: "2026-06-30T14:23:00.000Z",
@@ -141,6 +202,7 @@ export const seedData: AppData = {
 
 const emptyData: AppData = {
   currentUserId: "",
+  hospitals: [],
   profiles: [],
   patients: [],
   scans: [],
@@ -250,7 +312,18 @@ function readStore(): AppData {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return seedData;
   try {
-    return JSON.parse(raw) as AppData;
+    const parsed = JSON.parse(raw) as AppData;
+    return {
+      ...seedData,
+      ...parsed,
+      hospitals: parsed.hospitals?.length ? parsed.hospitals : demoHospitals,
+      profiles: parsed.profiles?.map((profile) => ({
+        ...profile,
+        role: profile.role === "admin" ? "hospital_admin" : profile.role,
+        clinicId: profile.clinicId ?? (profile.role === "afio_admin" ? undefined : AFIO_DEMO_HOSPITAL_ID),
+        clinicName: profile.clinicName ?? (profile.role === "afio_admin" ? "AFIO Platform" : "AFIO Demo Clinic")
+      })) ?? seedData.profiles
+    };
   } catch {
     return seedData;
   }
@@ -309,14 +382,16 @@ function octScansPublicPath(url?: string) {
 function userProfile(user: User): Profile {
   const email = user.email ?? "";
   const isSuperAdmin = email.toLowerCase() === SUPER_ADMIN_EMAIL;
+  const rawRole = user.user_metadata?.role as Role | undefined;
   return {
     id: user.id,
     fullName: user.user_metadata?.full_name ?? email.split("@")[0] ?? "Clinical user",
     email,
-    role: isSuperAdmin ? "admin" : (user.user_metadata?.role as Role | undefined) ?? "doctor",
+    role: isSuperAdmin ? "afio_admin" : rawRole === "admin" ? "hospital_admin" : rawRole ?? "doctor",
     doctorId: user.user_metadata?.doctor_id,
     specialization: user.user_metadata?.department,
     clinicName: user.user_metadata?.clinic_name ?? user.user_metadata?.department ?? "Clinical OCT Service",
+    clinicId: user.user_metadata?.clinic_id,
     isActive: isSuperAdmin
   };
 }
@@ -456,7 +531,8 @@ async function ensureProfile(user: User) {
     role: fallback.role,
     doctor_id: fallback.doctorId ?? null,
     specialization: fallback.specialization ?? null,
-    clinic_name: fallback.clinicName ?? "OCT AI Clinic",
+    clinic_name: fallback.clinicName ?? "AFIO Clinical Site",
+    clinic_id: fallback.clinicId ?? null,
     is_active: fallback.isActive
   });
 
@@ -468,8 +544,22 @@ async function ensureProfile(user: User) {
 function requireApprovedProfile(profile: Profile) {
   if (profile.email.toLowerCase() === SUPER_ADMIN_EMAIL) return;
   if (!profile.isActive) {
-    throw new Error("Your account is waiting for approval from raahymm@gmail.com.");
+    throw new Error("Your account is waiting for approval from your hospital administrator.");
   }
+}
+
+function activeSignupHospitals(data: AppData) {
+  return data.hospitals.filter((hospital) => hospital.isActive && hospital.allowSelfSignup && hospital.subscriptionStatus !== "suspended");
+}
+
+function hospitalForUser(data: AppData, profile: Profile) {
+  return data.hospitals.find((hospital) => hospital.id === profile.clinicId);
+}
+
+function visibleModuleIdsForUser(data: AppData, profile: Profile): ModuleId[] {
+  if (profile.role === "afio_admin") return ["oct", "vkg", "corneal", "retina"];
+  const hospital = hospitalForUser(data, profile);
+  return hospital?.enabledModules ?? ["oct"];
 }
 
 async function insertAudit(userId: string | null, action: string, recordType: string, recordId: string, details: string) {
@@ -540,6 +630,7 @@ export function useDemoStore() {
 
     setData({
       currentUserId: user.id,
+      hospitals: demoHospitals,
       profiles,
       patients: ((patientsResult.data ?? []) as DbPatient[]).map(mapPatient),
       scans: ((scansResult.data ?? []) as DbScan[]).map(mapScan),
@@ -608,6 +699,9 @@ export function useDemoStore() {
     mode,
     data,
     currentUser,
+    signupHospitals: activeSignupHospitals(data),
+    visibleModuleIds: visibleModuleIdsForUser(data, currentUser),
+    currentHospital: hospitalForUser(data, currentUser),
     async refresh() {
       if (mode === "supabase" && sessionUser) await loadSupabaseData(sessionUser);
     },
@@ -648,11 +742,13 @@ export function useDemoStore() {
       }
       await insertAudit(authUser.id, "User login", "profile", authUser.id, "Supabase login");
     },
-    async signUp(input: { email: string; password: string; fullName: string; role: Role; department: string; doctorId?: string }) {
+    async signUp(input: { email: string; password: string; fullName: string; role: Role; department: string; hospitalId: string; doctorId?: string }) {
       if (!supabase) throw new Error("Supabase is not configured.");
       const normalizedEmail = input.email.trim().toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(normalizedEmail)) throw new Error("Enter a valid email address.");
       if (input.password.length < 6) throw new Error("Password must be at least 6 characters.");
+      const requestedHospital = activeSignupHospitals(data.hospitals.length ? data : seedData).find((hospital) => hospital.id === input.hospitalId);
+      if (!requestedHospital) throw new Error("Select a registered hospital.");
 
       const { data: existingProfile } = await supabase
         .from("profiles")
@@ -672,7 +768,8 @@ export function useDemoStore() {
             role: input.role,
             department: input.department,
             doctor_id: input.doctorId || null,
-            clinic_name: input.department || "Clinical OCT Service"
+            clinic_id: requestedHospital.id,
+            clinic_name: requestedHospital.name
           }
         }
       });
@@ -692,7 +789,7 @@ export function useDemoStore() {
       await supabase.auth.signOut();
       setSessionUser(null);
       setData(emptyData);
-      throw new Error("Account request submitted. Confirm your email if needed, then wait for approval from raahymm@gmail.com.");
+      throw new Error(`Account request submitted for ${requestedHospital.name}. Confirm your email if needed, then wait for hospital admin approval.`);
     },
     async resetPassword(email: string) {
       if (!supabase) throw new Error("Supabase is not configured.");
@@ -897,7 +994,7 @@ export function useDemoStore() {
       return scan;
     },
     async replaceScanImage(scanId: string, file: File) {
-      if (currentUser.role !== "doctor" && currentUser.role !== "admin") {
+      if (currentUser.role !== "doctor" && currentUser.role !== "hospital_admin" && currentUser.role !== "admin") {
         throw new Error("Only doctors or admins can change scan images.");
       }
       const existing = data.scans.find((scan) => scan.id === scanId);
@@ -965,7 +1062,7 @@ export function useDemoStore() {
       return saved;
     },
     async deleteScan(scanId: string) {
-      if (currentUser.role !== "doctor" && currentUser.role !== "admin") {
+      if (currentUser.role !== "doctor" && currentUser.role !== "hospital_admin" && currentUser.role !== "admin") {
         throw new Error("Only doctors or admins can delete scans.");
       }
       const existing = data.scans.find((scan) => scan.id === scanId);
@@ -1254,7 +1351,7 @@ export function useDemoStore() {
       return approved;
     },
     async deleteReport(reportId: string) {
-      if (currentUser.role !== "doctor" && currentUser.role !== "admin") {
+      if (currentUser.role !== "doctor" && currentUser.role !== "hospital_admin" && currentUser.role !== "admin") {
         throw new Error("Only doctors can delete reports.");
       }
       if (mode === "supabase" && supabase) {
@@ -1267,7 +1364,7 @@ export function useDemoStore() {
       commit(audit({ ...data, reports: data.reports.filter((report) => report.id !== reportId) }, "Report deleted", "report", reportId, "Report removed"));
     },
     async deleteAnalysis(aiResultId: string) {
-      if (currentUser.role !== "doctor" && currentUser.role !== "admin") {
+      if (currentUser.role !== "doctor" && currentUser.role !== "hospital_admin" && currentUser.role !== "admin") {
         throw new Error("Only doctors or admins can delete analyses.");
       }
       const linkedReports = data.reports.filter((report) => report.aiResultId === aiResultId);
@@ -1297,8 +1394,15 @@ export function useDemoStore() {
       }, "Analysis deleted", "ai_result", aiResultId, "AI analysis removed"));
     },
     async updateProfileAccess(profileId: string, input: { role?: Role; isActive?: boolean }) {
-      if (currentUser.email.toLowerCase() !== SUPER_ADMIN_EMAIL) {
-        throw new Error("Only raahymm@gmail.com can approve clinical access.");
+      if (currentUser.role !== "afio_admin" && currentUser.role !== "hospital_admin" && currentUser.role !== "admin") {
+        throw new Error("Only AFIO or hospital admins can approve access.");
+      }
+      const target = data.profiles.find((profile) => profile.id === profileId);
+      if (currentUser.role !== "afio_admin" && target?.clinicId !== currentUser.clinicId) {
+        throw new Error("Hospital admins can only manage users from their hospital.");
+      }
+      if (input.role === "afio_admin" && currentUser.role !== "afio_admin") {
+        throw new Error("Only AFIO admins can grant AFIO admin access.");
       }
       if (!supabase || mode !== "supabase") {
         const profiles = data.profiles.map((profile) =>
@@ -1328,6 +1432,22 @@ export function useDemoStore() {
         profiles: current.profiles.map((profile) => (profile.id === saved.id ? saved : profile))
       }));
       await insertAudit(actorId, "User access updated", "profile", saved.id, `${saved.role} / ${saved.isActive ? "approved" : "suspended"}`);
+    },
+    updateHospitalAccess(hospitalId: string, input: { isActive?: boolean; subscriptionStatus?: Hospital["subscriptionStatus"]; enabledModules?: ModuleId[] }) {
+      if (currentUser.role !== "afio_admin") {
+        throw new Error("Only AFIO admins can manage hospital subscriptions.");
+      }
+      const hospitals = data.hospitals.map((hospital) =>
+        hospital.id === hospitalId
+          ? {
+              ...hospital,
+              isActive: input.isActive ?? hospital.isActive,
+              subscriptionStatus: input.subscriptionStatus ?? hospital.subscriptionStatus,
+              enabledModules: input.enabledModules ?? hospital.enabledModules
+            }
+          : hospital
+      );
+      commit(audit({ ...data, hospitals }, "Hospital access updated", "hospital", hospitalId, "AFIO business access update"));
     },
     resetDemo() {
       commit(seedData);

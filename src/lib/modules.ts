@@ -78,3 +78,8 @@ export function getEnabledModules() {
   const enabled = new Set(getEnabledModuleIds());
   return clinicalModules.filter((module) => enabled.has(module.id));
 }
+
+export function getModulesByIds(ids: ClinicalModuleId[]) {
+  const enabled = new Set(ids);
+  return clinicalModules.filter((module) => enabled.has(module.id));
+}

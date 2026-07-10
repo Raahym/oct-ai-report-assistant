@@ -1,4 +1,4 @@
-export type Role = "admin" | "doctor" | "assistant";
+export type Role = "afio_admin" | "hospital_admin" | "admin" | "doctor" | "assistant";
 export type RequestedRole = Role;
 export type Gender = "Female" | "Male" | "Other";
 export type EyeSide = "Left" | "Right" | "Both" | "Unknown";
@@ -18,6 +18,18 @@ export type Profile = {
   clinicId?: string;
   defaultDepartmentId?: string;
   isActive: boolean;
+};
+
+export type Hospital = {
+  id: string;
+  name: string;
+  code: string;
+  adminEmail?: string;
+  subscriptionStatus: "trial" | "active" | "past_due" | "suspended";
+  isActive: boolean;
+  allowSelfSignup: boolean;
+  enabledModules: ModuleId[];
+  createdAt: string;
 };
 
 export type Patient = {
@@ -144,6 +156,7 @@ export type FeedbackResponse = {
 
 export type AppData = {
   currentUserId: string;
+  hospitals: Hospital[];
   profiles: Profile[];
   patients: Patient[];
   scans: Scan[];
