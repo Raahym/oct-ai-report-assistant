@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import {
   ChevronDown,
@@ -129,15 +129,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   const visibleModuleItems = Array.from(new Map(store.visibleModuleIds.map((id) => [moduleNavItems[id].href, moduleNavItems[id]])).values());
-  const expandedModules = useMemo(() => {
-    const next: Record<string, boolean> = {};
-    store.visibleModuleIds.forEach((id) => {
-      const parent = moduleNavItems[id];
-      const children = moduleTreeItems[id] ?? [];
-      next[id] = openModules[id] ?? (pathname === parent.href || pathname.startsWith(`${parent.href}/`) || children.some((child) => pathname === child.href || pathname.startsWith(`${child.href}/`)));
-    });
-    return next;
-  }, [openModules, pathname, store.visibleModuleIds]);
+  const expandedModules: Record<string, boolean> = {};
+  store.visibleModuleIds.forEach((id) => {
+    const parent = moduleNavItems[id];
+    const children = moduleTreeItems[id] ?? [];
+    expandedModules[id] = openModules[id] ?? (pathname === parent.href || pathname.startsWith(`${parent.href}/`) || children.some((child) => pathname === child.href || pathname.startsWith(`${child.href}/`)));
+  });
   const navItems = store.currentUser.role === "afio_admin" ? businessItems : [baseNavItems[0], ...visibleModuleItems, baseNavItems[1]];
   const items =
     store.currentUser.role === "afio_admin"
