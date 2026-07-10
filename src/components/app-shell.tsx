@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useDemoStore } from "@/lib/demo-store";
+import { getEnabledModules } from "@/lib/modules";
 import { Button } from "./ui";
 
 const navItems = [
@@ -95,6 +96,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   const items = store.currentUser.role === "admin" ? [...navItems, ...adminItems] : store.currentUser.role === "doctor" ? [...navItems, ...doctorItems] : navItems;
+  const enabledModules = getEnabledModules();
+  const moduleLabel = enabledModules.map((module) => module.shortName).join(" + ");
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -102,8 +105,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="flex h-20 items-center gap-3 border-b border-slate-100 px-6">
           <EyeDepartmentLogo />
           <div>
-            <p className="text-sm font-black text-slate-950">OCT AI Report</p>
-            <p className="text-xs font-medium text-slate-500">Clinical Assistant</p>
+            <p className="text-sm font-black text-slate-950">AFIO AI Platform</p>
+            <p className="text-xs font-medium text-slate-500">{moduleLabel} access</p>
           </div>
         </div>
         <nav className="space-y-1 p-4 pb-32">
@@ -137,7 +140,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-wide text-clinic-700">Clinical workspace</p>
-              <h1 className="text-xl font-black text-slate-950">OCT AI Report Assistant</h1>
+              <h1 className="text-xl font-black text-slate-950">AFIO AI Report Platform</h1>
             </div>
             <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
               <select

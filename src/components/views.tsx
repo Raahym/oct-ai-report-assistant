@@ -14,6 +14,7 @@ import {
   FileText,
   Inbox,
   Loader2,
+  LockKeyhole,
   MessageSquare,
   Plus,
   RotateCcw,
@@ -29,12 +30,19 @@ import { predictOCT } from "@/lib/ai-api";
 import { useDemoStore } from "@/lib/demo-store";
 import { addFeedbackResponse, getCachedFeedbackEntries, getFeedbackEntries, submitFeedback, updateFeedbackStatus } from "@/lib/feedback";
 import { prepareScanImages } from "@/lib/image-processing";
+import { clinicalModules, getEnabledModuleIds } from "@/lib/modules";
 import { downloadPublicReportPdf, downloadReportPdf } from "@/lib/pdf";
 import { changePatientAccessPassword, checkPublicReport, getPatientAccessId, getPatientCurrentAccessPassword, sendFeedbackEmail, sendReportAccessEmail, type PublicReport, type PublicReportResult } from "@/lib/report-access";
 import { getReportTemplates, reportTemplates, saveReportTemplates } from "@/lib/report-templates";
 import type { DiseaseClass, EyeSide, FeedbackEntry, Gender, Patient, Report, Role, Scan } from "@/lib/types";
 
 const diseaseClasses: DiseaseClass[] = ["CNV", "DME", "DRUSEN", "NORMAL"];
+
+const moduleStatusLabels = {
+  live: "Live",
+  training: "Training",
+  awaiting_model: "Awaiting API"
+};
 
 const MIN_PATIENT_AGE = 0;
 const MAX_PATIENT_AGE = 130;
@@ -520,6 +528,7 @@ function AuthCard({ title, subtitle, action }: { title: string; subtitle: string
 export function DashboardView() {
   const store = useDemoStore();
   const [feedbackCount, setFeedbackCount] = useState(0);
+  const enabledModuleIds = new Set(getEnabledModuleIds());
   const pending = store.data.reports.filter((report) => report.status !== "approved").length;
   const approved = store.data.reports.filter((report) => report.status === "approved").length;
   const today = new Date().toISOString().slice(0, 10);
@@ -549,8 +558,8 @@ export function DashboardView() {
   return (
     <>
       <PageTitle
-        title="Clinical Dashboard"
-        subtitle="Monitor patients, OCT scans, AI-assisted draft reports, and clinician review activity."
+        title="AFIO Clinical Modules"
+        subtitle="Hospitals only see the AI services enabled for their license. Each department keeps its own patients, scans, and reports unless a doctor links records intentionally."
         action={
           <div className="grid gap-2 sm:flex">
             <Link href="/patients/new" className="block">
@@ -562,7 +571,7 @@ export function DashboardView() {
             <Link href="/scans/upload" className="block">
               <Button className="w-full" variant="secondary">
                 <Upload size={16} />
-                Upload OCT
+                Upload Scan
               </Button>
             </Link>
             <Link href="/reports/history" className="block">
@@ -575,6 +584,42 @@ export function DashboardView() {
         }
       />
       <SafetyNotice />
+      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {clinicalModules.map((module) => {
+          const enabled = enabledModuleIds.has(module.id);
+          const Icon = module.icon;
+          return (
+            <Card key={module.id} className="p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className={`flex h-11 w-11 items-center justify-center rounded-md ring-1 ${module.accent}`}>
+                  <Icon size={22} />
+                </div>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-black ${enabled ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>
+                  {enabled ? "Enabled" : "Locked"}
+                </span>
+              </div>
+              <div className="mt-4">
+                <p className="text-xs font-bold uppercase text-slate-500">{module.department}</p>
+                <h3 className="mt-1 text-lg font-black text-slate-950">{module.name}</h3>
+                <p className="mt-2 min-h-16 text-sm leading-6 text-slate-600">{module.description}</p>
+              </div>
+              <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                <span className="text-xs font-black uppercase text-slate-500">{moduleStatusLabels[module.status]}</span>
+                {enabled && module.route ? (
+                  <Link href={module.route} className="text-sm font-black text-clinic-700 hover:text-clinic-800">
+                    Open
+                  </Link>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-sm font-bold text-slate-400">
+                    <LockKeyhole size={14} />
+                    No access
+                  </span>
+                )}
+              </div>
+            </Card>
+          );
+        })}
+      </div>
       <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         {stats.map(([label, value]) => (
           <Card key={label} className="p-5">
