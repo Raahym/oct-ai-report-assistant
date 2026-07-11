@@ -50,6 +50,7 @@ export type Patient = {
   clinicalNotes?: string;
   clinicId?: string;
   departmentId?: string;
+  moduleId?: ModuleId;
   globalPatientKey?: string;
   createdBy: string;
   createdAt: string;

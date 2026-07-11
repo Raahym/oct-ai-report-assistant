@@ -83,6 +83,7 @@ alter table profiles add column if not exists clinic_id uuid references clinics(
 alter table profiles add column if not exists default_department_id uuid references departments(id);
 alter table patients add column if not exists clinic_id uuid references clinics(id);
 alter table patients add column if not exists department_id uuid references departments(id);
+alter table patients add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'retina'));
 alter table patients add column if not exists global_patient_key text;
 alter table scans add column if not exists clinic_id uuid references clinics(id);
 alter table scans add column if not exists department_id uuid references departments(id);
@@ -186,8 +187,14 @@ set
     join clinics on clinics.id = departments.clinic_id
     where clinics.code = 'AFIO-DEMO' and departments.module_id = 'oct'
   ),
+  module_id = coalesce(module_id, 'oct'),
   global_patient_key = coalesce(nullif(regexp_replace(coalesce(cnic, ''), '\D', '', 'g'), ''), patient_code)
-where clinic_id is null or department_id is null;
+where clinic_id is null or department_id is null or module_id is null;
+
+update patients
+set module_id = scans.module_id
+from scans
+where scans.patient_id = patients.id and scans.module_id is not null and patients.module_id is null;
 
 update scans
 set
@@ -233,6 +240,7 @@ join departments on departments.clinic_id = profiles.clinic_id and departments.m
 on conflict (department_id, user_id) do nothing;
 
 create index if not exists idx_patients_department on patients(department_id);
+create index if not exists idx_patients_clinic_module on patients(clinic_id, module_id);
 create index if not exists idx_scans_department_module on scans(department_id, module_id);
 create index if not exists idx_reports_department_module on reports(department_id, module_id);
 create index if not exists idx_department_users_user on department_users(user_id);

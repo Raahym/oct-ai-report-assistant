@@ -42,6 +42,23 @@ const vkgClasses: ClinicalClass[] = ["NORMAL", "KCN", "SUSPECT"];
 const MIN_PATIENT_AGE = 0;
 const MAX_PATIENT_AGE = 130;
 
+function moduleFromSearchParams(searchParams: ReturnType<typeof useSearchParams>): ModuleId {
+  return searchParams.get("module") === "vkg" ? "vkg" : "oct";
+}
+
+function getModuleLabel(moduleId: ModuleId) {
+  return moduleId === "vkg" ? "VKG" : "OCT";
+}
+
+function filterPatientsForModule(patients: Patient[], scans: Scan[], moduleId: ModuleId) {
+  const patientIdsWithModuleScans = new Set(scans.filter((scan) => (scan.moduleId ?? "oct") === moduleId).map((scan) => scan.patientId));
+  return patients.filter((patient) => {
+    if (patientIdsWithModuleScans.has(patient.id)) return true;
+    if (patient.moduleId) return patient.moduleId === moduleId;
+    return moduleId === "oct";
+  });
+}
+
 function isValidPatientAge(value: string) {
   if (value.trim() === "") return false;
   const age = Number(value);
@@ -583,10 +600,14 @@ export function DashboardView() {
         title="AFIO Platform Dashboard"
         subtitle={store.currentUser.role === "afio_admin" ? "Business Admin preview. Hospitals only see services enabled from the business control panel." : "Choose one of your hospital's purchased services. Patients, reports, feedback, and storage remain scoped to the selected hospital."}
       />
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card className="p-5">
           <p className="text-sm font-semibold text-slate-500">Enabled modules</p>
           <p className="mt-2 text-3xl font-black text-slate-950">{enabledCount}</p>
+        </Card>
+        <Card className="p-5">
+          <p className="text-sm font-semibold text-slate-500">Total patients</p>
+          <p className="mt-2 text-3xl font-black text-slate-950">{store.data.patients.length}</p>
         </Card>
         <Card className="p-5">
           <p className="text-sm font-semibold text-slate-500">Subscription</p>
@@ -1086,11 +1107,14 @@ export function AfioBusinessAdminView() {
 
 export function NewPatientView() {
   const store = useDemoStore();
+  const searchParams = useSearchParams();
+  const moduleId = moduleFromSearchParams(searchParams);
+  const activeModuleLabel = getModuleLabel(moduleId);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [createdPatient, setCreatedPatient] = useState<Patient | null>(null);
   const [form, setForm] = useState({
-    patientCode: `MCS-OCT-${String(store.data.patients.length + 1).padStart(4, "0")}`,
+    patientCode: `MCS-${moduleId.toUpperCase()}-${String(store.data.patients.length + 1).padStart(4, "0")}`,
     cnic: "",
     fullName: "",
     age: "",
@@ -1119,7 +1143,7 @@ export function NewPatientView() {
       return;
     }
     try {
-      const patient = await store.createPatient({ ...form, cnic: formatCnic(form.cnic), age: Number(form.age) });
+      const patient = await store.createPatient({ ...form, cnic: formatCnic(form.cnic), age: Number(form.age), moduleId });
       const password = getPatientCurrentAccessPassword(patient);
       if (patient.email) {
         const result = await sendReportAccessEmail({
@@ -1141,7 +1165,7 @@ export function NewPatientView() {
 
   return (
     <>
-      <PageTitle title="New Patient" subtitle="Create a patient record before uploading an OCT image." />
+      <PageTitle title={`New ${activeModuleLabel} Patient`} subtitle={`Create a patient record inside the ${activeModuleLabel} workflow before uploading an image.`} />
       <Card className="p-5">
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Patient ID / MR Number" value={form.patientCode} onChange={(value) => setForm({ ...form, patientCode: value })} />
@@ -1191,18 +1215,22 @@ export function NewPatientView() {
 
 export function SearchPatientsView() {
   const store = useDemoStore();
+  const searchParams = useSearchParams();
+  const moduleId = moduleFromSearchParams(searchParams);
+  const activeModuleLabel = getModuleLabel(moduleId);
   const [query, setQuery] = useState("");
-  const results = store.data.patients.filter((patient) => {
+  const modulePatients = filterPatientsForModule(store.data.patients, store.data.scans, moduleId);
+  const results = modulePatients.filter((patient) => {
     const value = `${patient.patientCode} ${patient.cnic ?? ""} ${patient.fullName} ${patient.phone}`.toLowerCase();
     return value.includes(query.toLowerCase());
   });
   return (
     <>
-      <PageTitle title="Search Patient" subtitle="Find records by patient ID, CNIC, name, or phone number." />
+      <PageTitle title={`${activeModuleLabel} Patients`} subtitle={`Find ${activeModuleLabel} records by patient ID, CNIC, name, or phone number. Hospital-wide totals stay on the dashboard.`} />
       <Card className="p-5">
         <div className="relative">
           <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
-          <input className="field pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search MCS-OCT-0001, CNIC, patient name, phone..." />
+          <input className="field pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search MCS-${moduleId.toUpperCase()}-0001, CNIC, patient name, phone...`} />
         </div>
       </Card>
       <Card className="mt-5 overflow-hidden">
@@ -1406,8 +1434,9 @@ export function UploadScanView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const store = useDemoStore();
-  const moduleId = (searchParams.get("module") === "vkg" ? "vkg" : "oct") as ModuleId;
-  const moduleLabel = moduleId === "vkg" ? "VKG" : "OCT";
+  const moduleId = moduleFromSearchParams(searchParams);
+  const moduleLabel = getModuleLabel(moduleId);
+  const modulePatients = filterPatientsForModule(store.data.patients, store.data.scans, moduleId);
   const [patientId, setPatientId] = useState("");
   const [eyeSide, setEyeSide] = useState<EyeSide>("Unknown");
   const [scanNotes, setScanNotes] = useState("");
@@ -1487,8 +1516,8 @@ export function UploadScanView() {
             <SelectField
               label="Patient"
               value={patientId}
-              options={["", ...store.data.patients.map((patient) => patient.id)]}
-              optionLabels={{ "": "Select patient", ...Object.fromEntries(store.data.patients.map((patient) => [patient.id, `${patient.patientCode} - ${patient.fullName}`])) }}
+              options={["", ...modulePatients.map((patient) => patient.id)]}
+              optionLabels={{ "": `Select ${moduleLabel} patient`, ...Object.fromEntries(modulePatients.map((patient) => [patient.id, `${patient.patientCode} - ${patient.fullName}`])) }}
               onChange={setPatientId}
             />
             <SelectField label="Eye side" value={eyeSide} options={["Left", "Right", "Both", "Unknown"]} onChange={(value) => setEyeSide(value as EyeSide)} />

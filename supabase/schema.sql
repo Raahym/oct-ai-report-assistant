@@ -26,6 +26,7 @@ create table if not exists patients (
   diabetes_history text default 'Unknown',
   previous_eye_disease text,
   clinical_notes text,
+  module_id text check (module_id in ('oct', 'vkg', 'corneal', 'retina')),
   created_by uuid references profiles(id),
   created_at timestamptz default now(),
   updated_at timestamptz default now()

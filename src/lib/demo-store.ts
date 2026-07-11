@@ -256,6 +256,7 @@ type DbPatient = {
   clinical_notes: string | null;
   clinic_id: string | null;
   department_id: string | null;
+  module_id: ModuleId | null;
   global_patient_key: string | null;
   created_by: string | null;
   created_at: string;
@@ -461,6 +462,7 @@ function mapPatient(row: DbPatient): Patient {
     clinicalNotes: row.clinical_notes ?? undefined,
     clinicId: row.clinic_id ?? undefined,
     departmentId: row.department_id ?? undefined,
+    moduleId: row.module_id ?? undefined,
     globalPatientKey: row.global_patient_key ?? undefined,
     createdBy: row.created_by ?? "",
     createdAt: row.created_at,
@@ -903,6 +905,7 @@ export function useDemoStore() {
             clinical_notes: input.clinicalNotes || null,
             clinic_id: currentUser.clinicId ?? null,
             department_id: input.departmentId ?? currentUser.defaultDepartmentId ?? null,
+            module_id: input.moduleId ?? null,
             global_patient_key: input.globalPatientKey ?? input.cnic?.replace(/\D/g, "") ?? input.patientCode,
             created_by: actorId
           })
@@ -947,6 +950,7 @@ export function useDemoStore() {
             clinical_notes: input.clinicalNotes || null,
             clinic_id: input.clinicId ?? currentUser.clinicId ?? null,
             department_id: input.departmentId ?? currentUser.defaultDepartmentId ?? null,
+            module_id: input.moduleId ?? null,
             global_patient_key: input.globalPatientKey ?? input.cnic?.replace(/\D/g, "") ?? input.patientCode,
             updated_at: now()
           })
@@ -1034,7 +1038,14 @@ export function useDemoStore() {
 
         if (error) throw new Error(error.message);
         const scan = mapScan(row as DbScan);
-        setData((current) => ({ ...current, scans: [scan, ...current.scans] }));
+        if (patient && !patient.moduleId) {
+          await supabase.from("patients").update({ module_id: moduleId }).eq("id", patient.id);
+        }
+        setData((current) => ({
+          ...current,
+          patients: patient && !patient.moduleId ? current.patients.map((item) => (item.id === patient.id ? { ...item, moduleId } : item)) : current.patients,
+          scans: [scan, ...current.scans]
+        }));
         await insertAudit(actorId, "Scan uploaded", "scan", scan.id, storagePath);
         return scan;
       }
@@ -1053,7 +1064,8 @@ export function useDemoStore() {
         uploadedBy: currentUser.id,
         createdAt: now()
       };
-      commit(audit({ ...data, scans: [scan, ...data.scans] }, "Scan uploaded", "scan", scan.id, "Demo storage path created"));
+      const patients = patient && !patient.moduleId ? data.patients.map((item) => (item.id === patient.id ? { ...item, moduleId } : item)) : data.patients;
+      commit(audit({ ...data, patients, scans: [scan, ...data.scans] }, "Scan uploaded", "scan", scan.id, "Demo storage path created"));
       return scan;
     },
     async replaceScanImage(scanId: string, file: File) {
