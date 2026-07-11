@@ -8,7 +8,7 @@ from model import (
     INVALID_IMAGE_DISCLAIMER,
     MODEL_NAME,
     MODEL_VERSION,
-    basic_corneal_image_check,
+    assess_vkg_image_quality,
     load_models,
     load_summary,
     predict_image,
@@ -73,7 +73,8 @@ async def predict(file: UploadFile = File(...)):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    if not basic_corneal_image_check(image):
+    quality = assess_vkg_image_quality(image)
+    if not quality["is_valid"]:
         return CornealPrediction(
             prediction="INVALID_IMAGE",
             confidence=0,
@@ -83,7 +84,9 @@ async def predict(file: UploadFile = File(...)):
             model_version=MODEL_VERSION,
             models_used=list(models_dict.keys()),
             is_valid_corneal=False,
-            disclaimer=INVALID_IMAGE_DISCLAIMER,
+            quality_metrics=quality["metrics"],
+            validation_warnings=quality["warnings"],
+            disclaimer=f"{INVALID_IMAGE_DISCLAIMER} {' '.join(quality['warnings'])}",
         )
 
-    return CornealPrediction(**predict_image(image, models_dict))
+    return CornealPrediction(**predict_image(image, models_dict, quality))

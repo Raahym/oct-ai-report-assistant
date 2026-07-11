@@ -93,6 +93,9 @@ export type BackendPrediction = {
   model_name: string;
   model_version: string;
   is_valid_oct?: boolean;
+  is_valid_corneal?: boolean;
+  quality_metrics?: Record<string, number | boolean | string>;
+  validation_warnings?: string[];
   gradcam_overlay_base64?: string | null;
   gradcam_disclaimer?: string;
   disclaimer: string;

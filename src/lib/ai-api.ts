@@ -165,6 +165,7 @@ function normalizeVkgPrediction(prediction: BackendPrediction): BackendPredictio
   const normal = rawProbabilities.non_keratoconus ?? rawProbabilities.NORMAL ?? rawProbabilities.NO_KERATOCONUS_RISK ?? 0;
   const suspect = rawProbabilities.SUSPECT ?? Math.max(0, 1 - Math.max(keratoconus, normal));
   const rawPrediction = prediction.prediction as string;
+  const isValidVkg = prediction.is_valid_corneal ?? prediction.is_valid_oct ?? true;
   const mappedPrediction = rawPrediction === "KERATOCONUS_RISK"
     ? "KCN"
     : rawPrediction === "NO_KERATOCONUS_RISK"
@@ -180,10 +181,14 @@ function normalizeVkgPrediction(prediction: BackendPrediction): BackendPredictio
         KCN: keratoconus,
         SUSPECT: suspect,
       },
+      is_valid_oct: isValidVkg,
       model_name: prediction.model_name || "VKG Keratoconus Screening Model",
       disclaimer: prediction.disclaimer || "VKG/topography AI screening output. Requires clinician review.",
     };
   }
 
-  return prediction;
+  return {
+    ...prediction,
+    is_valid_oct: isValidVkg,
+  };
 }

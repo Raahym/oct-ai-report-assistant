@@ -10,5 +10,7 @@ class CornealPrediction(BaseModel):
     model_version: str
     models_used: list[str]
     is_valid_corneal: bool
+    quality_metrics: dict[str, float | bool | str] = {}
+    validation_warnings: list[str] = []
     disclaimer: str
     inference_time_ms: int | None = None

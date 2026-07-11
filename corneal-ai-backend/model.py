@@ -18,6 +18,7 @@ MODEL_NAME = "Group 2 Binary Corneal Ensemble"
 MODEL_VERSION = "binary-ensemble-v1"
 DISCLAIMER = "AI-assisted corneal keratoconus screening result. Requires doctor review."
 INVALID_IMAGE_DISCLAIMER = "Please upload a corneal topography/VKG-style image for this screening model."
+LOW_CONFIDENCE_DISCLAIMER = "The uploaded image resembles VKG/topography, but the AI confidence is low. Ask a doctor to review and consider repeating the scan."
 CLASS_NAMES = ["non_keratoconus", "keratoconus"]
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -127,25 +128,79 @@ def read_image_bytes(image_bytes: bytes) -> Image.Image:
         raise ValueError("Invalid image file.") from exc
 
 
-def basic_corneal_image_check(image: Image.Image) -> bool:
+def assess_vkg_image_quality(image: Image.Image) -> dict[str, Any]:
     small = image.convert("RGB").resize((224, 224))
     arr = np.array(small)
     gray = np.array(small.convert("L"))
-    saturation = np.array(small.convert("HSV"))[:, :, 1]
+    hsv = np.array(small.convert("HSV"))
+    saturation = hsv[:, :, 1]
     contrast = float(gray.std())
     saturation_mean = float(saturation.mean())
     brightness = float(gray.mean())
     color_spread = float(np.std(arr.reshape(-1, 3).mean(axis=1)))
+    colored_mask = (saturation > 45) & (gray > 20) & (gray < 245)
+    colored_ratio = float(colored_mask.mean())
 
-    if contrast < 12 or brightness < 8 or brightness > 247:
-        return False
-    # Topography maps are usually colorful heat maps or annotated clinical maps.
-    if saturation_mean < 12 and color_spread < 18:
-        return False
-    return True
+    ys, xs = np.where(colored_mask)
+    circle_score = 0.0
+    center_score = 0.0
+    fill_score = 0.0
+    if len(xs) > 250:
+        width = float(xs.max() - xs.min() + 1)
+        height = float(ys.max() - ys.min() + 1)
+        aspect_ratio = min(width, height) / max(width, height)
+        center_x = float(xs.mean()) / 223.0
+        center_y = float(ys.mean()) / 223.0
+        center_distance = ((center_x - 0.5) ** 2 + (center_y - 0.5) ** 2) ** 0.5
+        fill_score = len(xs) / max(width * height, 1.0)
+        circle_score = max(0.0, min(1.0, aspect_ratio))
+        center_score = max(0.0, 1.0 - center_distance * 3.0)
+
+    warnings: list[str] = []
+    if contrast < 12:
+        warnings.append("Image has very low contrast.")
+    if brightness < 8 or brightness > 247:
+        warnings.append("Image brightness is outside the expected clinical-map range.")
+    if saturation_mean < 18 or color_spread < 18:
+        warnings.append("Image is not colorful enough for a VKG/topography map.")
+    if colored_ratio < 0.08:
+        warnings.append("Not enough colored topography-map area detected.")
+    if circle_score < 0.62:
+        warnings.append("Colored map area does not look sufficiently circular.")
+    if center_score < 0.35:
+        warnings.append("Topography map is not centered enough.")
+    if fill_score < 0.22:
+        warnings.append("Detected map area is too sparse for a VKG/topography scan.")
+
+    is_valid = not warnings
+    return {
+        "is_valid": is_valid,
+        "warnings": warnings,
+        "metrics": {
+            "contrast": round(contrast, 3),
+            "brightness": round(brightness, 3),
+            "saturation_mean": round(saturation_mean, 3),
+            "color_spread": round(color_spread, 3),
+            "colored_ratio": round(colored_ratio, 4),
+            "circle_score": round(circle_score, 4),
+            "center_score": round(center_score, 4),
+            "fill_score": round(fill_score, 4),
+        },
+    }
 
 
-def predict_image(image: Image.Image, models_dict: dict[str, nn.Module]) -> dict[str, Any]:
+def basic_corneal_image_check(image: Image.Image) -> bool:
+    return bool(assess_vkg_image_quality(image)["is_valid"])
+
+
+def low_confidence_warning(confidence: float, keratoconus_probability: float) -> str | None:
+    if confidence < 0.65:
+        return LOW_CONFIDENCE_DISCLAIMER
+    if 0.35 <= keratoconus_probability <= 0.65:
+        return "Borderline keratoconus probability. Treat as suspect and review clinically."
+    return None
+
+def predict_image(image: Image.Image, models_dict: dict[str, nn.Module], quality: dict[str, Any] | None = None) -> dict[str, Any]:
     started_at = time.perf_counter()
     tensor = preprocess(image).unsqueeze(0).to(DEVICE)
     probabilities_by_model = []
@@ -159,9 +214,11 @@ def predict_image(image: Image.Image, models_dict: dict[str, nn.Module]) -> dict
     prediction = "KERATOCONUS_RISK" if kc >= 0.5 else "NO_KERATOCONUS_RISK"
     confidence = kc if prediction == "KERATOCONUS_RISK" else non_kc
     risk_level = "HIGH" if kc >= 0.7 else "MODERATE" if kc >= 0.4 else "LOW"
+    warning = low_confidence_warning(float(confidence), kc)
+    validation_warnings = [warning] if warning else []
 
     return {
-        "prediction": prediction,
+        "prediction": "INVALID_OR_UNCERTAIN_IMAGE" if warning and confidence < 0.65 else prediction,
         "confidence": round(float(confidence), 4),
         "probabilities": {
             "non_keratoconus": non_kc,
@@ -171,7 +228,9 @@ def predict_image(image: Image.Image, models_dict: dict[str, nn.Module]) -> dict
         "model_name": MODEL_NAME,
         "model_version": MODEL_VERSION,
         "models_used": list(models_dict.keys()),
-        "is_valid_corneal": True,
-        "disclaimer": DISCLAIMER,
+        "is_valid_corneal": not (warning and confidence < 0.65),
+        "quality_metrics": (quality or {}).get("metrics", {}),
+        "validation_warnings": validation_warnings,
+        "disclaimer": warning or DISCLAIMER,
         "inference_time_ms": round((time.perf_counter() - started_at) * 1000),
     }
