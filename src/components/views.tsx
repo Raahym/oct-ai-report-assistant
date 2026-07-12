@@ -34,7 +34,7 @@ import { getModulesByIds } from "@/lib/modules";
 import { downloadPublicReportPdf, downloadReportPdf } from "@/lib/pdf";
 import { changePatientAccessPassword, checkPublicReport, getPatientAccessId, getPatientCurrentAccessPassword, sendFeedbackEmail, sendReportAccessEmail, type PublicReport, type PublicReportResult } from "@/lib/report-access";
 import { getReportTemplates, reportClassesForModule, reportTemplates, saveReportTemplates } from "@/lib/report-templates";
-import type { ClinicalClass, DiseaseClass, EyeSide, FeedbackEntry, Gender, ModuleId, Patient, Report, Role, Scan } from "@/lib/types";
+import type { AiResult, ClinicalClass, DiseaseClass, EyeSide, FeedbackEntry, Gender, ModuleId, Patient, Report, Role, Scan } from "@/lib/types";
 
 const diseaseClasses: DiseaseClass[] = ["CNV", "DME", "DRUSEN", "NORMAL"];
 const vkgClasses: ClinicalClass[] = ["NORMAL", "KCN", "SUSPECT"];
@@ -42,6 +42,102 @@ const retinaClasses: ClinicalClass[] = ["NO_DR", "MILD_DR", "MODERATE_DR", "SEVE
 
 const MIN_PATIENT_AGE = 0;
 const MAX_PATIENT_AGE = 130;
+
+type RetinaDetails = {
+  dr?: {
+    class?: string;
+    confidence?: number;
+    low_confidence?: boolean;
+    referral?: string;
+  };
+  glaucoma?: {
+    risk?: string;
+    cdr?: number | string;
+    confidence?: number | string;
+    disc_pixels?: number | string;
+    cup_pixels?: number | string;
+    detail?: string;
+  } | null;
+  hypertensive_retinopathy?: {
+    detected?: boolean | string;
+    risk?: string;
+    probability?: number | string;
+    recommendation?: string;
+    threshold?: number;
+  } | null;
+  warnings?: string[];
+};
+
+function parseRetinaModelVersion(modelVersion: string): { details?: RetinaDetails; displayVersion: string } {
+  const prefix = "retina-details:";
+  if (!modelVersion.startsWith(prefix)) return { displayVersion: modelVersion };
+  const separator = " | ";
+  const end = modelVersion.indexOf(separator);
+  const jsonText = end === -1 ? modelVersion.slice(prefix.length) : modelVersion.slice(prefix.length, end);
+  try {
+    return {
+      details: JSON.parse(jsonText) as RetinaDetails,
+      displayVersion: end === -1 ? "Retina combined screening" : modelVersion.slice(end + separator.length)
+    };
+  } catch {
+    return { displayVersion: modelVersion.replace(/^retina-details:[^|]+\s\|\s?/, "") };
+  }
+}
+
+function formatMaybePercent(value: number | string | undefined) {
+  if (typeof value !== "number") return value ? String(value) : "Not available";
+  return `${Math.round(value * 100)}%`;
+}
+
+function RetinaResultDetails({ aiResult }: { aiResult: AiResult }) {
+  const { details } = parseRetinaModelVersion(aiResult.modelVersion);
+  if (!details) return null;
+  const glaucoma = details.glaucoma;
+  const hr = details.hypertensive_retinopathy;
+  const hrDetected = hr?.detected === true || hr?.detected === "true";
+
+  return (
+    <div className="grid gap-3">
+      {details.warnings?.length ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
+          {details.warnings.join(" ")}
+        </div>
+      ) : null}
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-lg border border-slate-200 bg-white p-3">
+          <p className="text-xs font-black uppercase tracking-wide text-slate-500">Diabetic Retinopathy</p>
+          <p className="mt-2 text-lg font-black text-slate-950">{details.dr?.class ?? aiResult.predictedClass}</p>
+          <p className="text-sm font-semibold text-slate-600">Confidence {formatMaybePercent(details.dr?.confidence ?? aiResult.confidence)}</p>
+          {details.dr?.low_confidence ? <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs font-bold text-amber-800">Low confidence. Doctor review required.</p> : null}
+          {details.dr?.referral ? <p className="mt-2 text-xs leading-relaxed text-slate-500">{details.dr.referral}</p> : null}
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-3">
+          <p className="text-xs font-black uppercase tracking-wide text-slate-500">Glaucoma</p>
+          <p className="mt-2 text-lg font-black text-slate-950">{glaucoma?.risk || "Not run"}</p>
+          <div className="mt-2 grid grid-cols-2 gap-2 text-xs font-semibold text-slate-600">
+            <span>CDR: {typeof glaucoma?.cdr === "number" ? glaucoma.cdr.toFixed(3) : glaucoma?.cdr || "N/A"}</span>
+            <span>Confidence: {formatMaybePercent(typeof glaucoma?.confidence === "number" ? glaucoma.confidence : undefined)}</span>
+            <span>Disc: {glaucoma?.disc_pixels || "N/A"}</span>
+            <span>Cup: {glaucoma?.cup_pixels || "N/A"}</span>
+          </div>
+          {glaucoma?.detail ? <p className="mt-2 text-xs leading-relaxed text-slate-500">{glaucoma.detail}</p> : null}
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-3">
+          <p className="text-xs font-black uppercase tracking-wide text-slate-500">Hypertensive Retinopathy</p>
+          <p className={`mt-2 text-lg font-black ${hrDetected ? "text-red-700" : "text-slate-950"}`}>{hr?.risk || (hr ? "No HR Detected" : "Not run")}</p>
+          <p className="text-sm font-semibold text-slate-600">Probability {formatMaybePercent(typeof hr?.probability === "number" ? hr.probability : undefined)}</p>
+          <p className="text-xs font-semibold text-slate-500">Screening threshold {formatMaybePercent(hr?.threshold ?? 0.2)}</p>
+          {hr?.recommendation ? <p className="mt-2 text-xs leading-relaxed text-slate-500">{hr.recommendation}</p> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CleanModelVersion({ aiResult }: { aiResult: AiResult }) {
+  const { displayVersion } = parseRetinaModelVersion(aiResult.modelVersion);
+  return <Info label="Model" value={`${aiResult.modelName} ${displayVersion}`} />;
+}
 
 function moduleFromSearchParams(searchParams: ReturnType<typeof useSearchParams>): ModuleId {
   const moduleId = searchParams.get("module");
@@ -1892,6 +1988,7 @@ export function AnalysisView({ id }: { id: string }) {
                   <Probability key={item} label={item} value={aiResult.probabilities[item] ?? 0} active={item === aiResult.predictedClass} />
                 ))}
               </div>
+              {scan.moduleId === "retina" ? <RetinaResultDetails aiResult={aiResult} /> : null}
               {aiResult.heatmapUrl ? (
                 <div className="rounded-md border border-slate-200 bg-white p-3">
                   <p className="text-sm font-black text-slate-950">Grad-CAM attention heatmap</p>
@@ -1900,8 +1997,15 @@ export function AnalysisView({ id }: { id: string }) {
                     Highlighted regions influenced the AI classification. This is not a segmentation map or measurement.
                   </p>
                 </div>
+              ) : scan.moduleId === "retina" ? (
+                <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-3">
+                  <p className="text-sm font-black text-slate-950">Grad-CAM attention heatmap</p>
+                  <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500">
+                    DR Grad-CAM was not returned by the deployed DR service for this run. The original Group 3 Grad-CAM worker is preserved locally, but it should be deployed only after we can host the PyTorch worker without hurting speed or reliability.
+                  </p>
+                </div>
               ) : null}
-              <Info label="Model" value={`${aiResult.modelName} ${aiResult.modelVersion}`} />
+              <CleanModelVersion aiResult={aiResult} />
               <Info label="Timestamp" value={new Date(aiResult.createdAt).toLocaleString()} />
               <div className="grid gap-2 sm:flex">
                 <Button className="w-full sm:w-auto" variant="secondary" onClick={analyzeScan} disabled={analysisLoading}>

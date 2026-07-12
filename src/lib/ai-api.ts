@@ -162,10 +162,21 @@ export async function predictRetina(file: File): Promise<BackendPrediction> {
 
 type RetinaGlaucomaPrediction = {
   cdr?: number;
+  confidence?: number;
+  predicted_class?: string;
   risk_level?: string;
+  risk_label?: string;
   risk_detail?: string;
+  referral_recommendation?: string;
   disc_pixels?: number;
   cup_pixels?: number;
+  metrics?: {
+    disc_area?: number;
+    cup_area?: number;
+    disc_pixels?: number;
+    cup_pixels?: number;
+    output_dims?: number[];
+  };
 };
 
 type RetinaHrPrediction = {
@@ -190,18 +201,60 @@ function normalizeRetinaPrediction(prediction: BackendPrediction & {
     ? prediction.scores
     : labels.map((_, index) => Number((prediction.scores as Record<string, number> | undefined)?.[String(index)] ?? 0));
   const predictedClass = labels[prediction.predicted_class ?? 0] ?? "NO_DR";
+  const confidence = Number(prediction.confidence ?? scoreValues[prediction.predicted_class ?? 0] ?? 0);
+  const glaucomaRisk = glaucoma?.risk_level ?? glaucoma?.risk_label ?? (glaucoma?.predicted_class ? glaucoma.predicted_class : undefined);
+  const glaucomaDetail = glaucoma?.risk_detail ?? glaucoma?.referral_recommendation ?? "";
+  const glaucomaDiscPixels = glaucoma?.disc_pixels ?? glaucoma?.metrics?.disc_pixels ?? glaucoma?.metrics?.disc_area;
+  const glaucomaCupPixels = glaucoma?.cup_pixels ?? glaucoma?.metrics?.cup_pixels ?? glaucoma?.metrics?.cup_area;
   const glaucomaSummary = glaucoma
-    ? `Glaucoma: ${glaucoma.risk_level ?? "Unknown"}${typeof glaucoma.cdr === "number" ? `, CDR ${glaucoma.cdr}` : ""}`
+    ? `Glaucoma: ${glaucomaRisk ?? "Unknown"}${typeof glaucoma.cdr === "number" ? `, CDR ${Number(glaucoma.cdr).toFixed(3)}` : ""}`
     : "Glaucoma: not run";
   const hrSummary = hypertensiveRetinopathy
     ? `Hypertensive retinopathy: ${hypertensiveRetinopathy.risk_level ?? (hypertensiveRetinopathy.hr_detected ? "Detected" : "Not detected")}${typeof hypertensiveRetinopathy.probability === "number" ? `, probability ${Math.round(hypertensiveRetinopathy.probability * 100)}%` : ""}`
     : "Hypertensive retinopathy: not run";
   const drSummary = `Diabetic retinopathy: ${prediction.severity_label ?? predictedClass}`;
+  const warnings = [
+    ...(prediction.validation_warnings ?? []),
+    confidence < 0.7 ? "Low-confidence DR classification. Treat the top class as provisional and review the probability spread." : "",
+    prediction.low_confidence ? prediction.confidence_warning ?? "Low-confidence model output." : "",
+    ...optionalWarnings
+  ].filter(Boolean);
+  const retinaDetails = {
+    dr: {
+      class: predictedClass,
+      confidence,
+      low_confidence: confidence < 0.7 || Boolean(prediction.low_confidence),
+      referral: prediction.referral ?? "",
+      probabilities: {
+        NO_DR: scoreValues[0] ?? 0,
+        MILD_DR: scoreValues[1] ?? 0,
+        MODERATE_DR: scoreValues[2] ?? 0,
+        SEVERE_DR: scoreValues[3] ?? 0,
+        PROLIFERATIVE_DR: scoreValues[4] ?? 0,
+      },
+    },
+    glaucoma: glaucoma ? {
+      risk: glaucomaRisk ?? "",
+      cdr: glaucoma.cdr ?? "",
+      confidence: glaucoma.confidence ?? "",
+      disc_pixels: glaucomaDiscPixels ?? "",
+      cup_pixels: glaucomaCupPixels ?? "",
+      detail: glaucomaDetail,
+    } : null,
+    hypertensive_retinopathy: hypertensiveRetinopathy ? {
+      detected: hypertensiveRetinopathy.hr_detected ?? "",
+      risk: hypertensiveRetinopathy.risk_level ?? "",
+      probability: hypertensiveRetinopathy.probability ?? "",
+      recommendation: hypertensiveRetinopathy.recommendation ?? "",
+      threshold: 0.2,
+    } : null,
+    warnings,
+  };
 
   return {
     ...prediction,
     prediction: predictedClass,
-    confidence: Number(prediction.confidence ?? scoreValues[prediction.predicted_class ?? 0] ?? 0),
+    confidence,
     probabilities: {
       NO_DR: scoreValues[0] ?? 0,
       MILD_DR: scoreValues[1] ?? 0,
@@ -213,19 +266,21 @@ function normalizeRetinaPrediction(prediction: BackendPrediction & {
     quality_metrics: {
       ...(prediction.quality_metrics ?? {}),
       glaucoma_cdr: glaucoma?.cdr ?? "",
-      glaucoma_risk: glaucoma?.risk_level ?? "",
-      glaucoma_detail: glaucoma?.risk_detail ?? "",
+      glaucoma_risk: glaucomaRisk ?? "",
+      glaucoma_detail: glaucomaDetail,
+      glaucoma_disc_pixels: glaucomaDiscPixels ?? "",
+      glaucoma_cup_pixels: glaucomaCupPixels ?? "",
       hypertensive_retinopathy_detected: hypertensiveRetinopathy?.hr_detected ?? "",
       hypertensive_retinopathy_probability: hypertensiveRetinopathy?.probability ?? "",
       hypertensive_retinopathy_recommendation: hypertensiveRetinopathy?.recommendation ?? "",
     },
     model_name: "Retina Combined Screening Model",
-    model_version: [drSummary, glaucomaSummary, hrSummary].join(" | "),
-    validation_warnings: [...(prediction.validation_warnings ?? []), ...optionalWarnings],
+    model_version: [`retina-details:${JSON.stringify(retinaDetails)}`, drSummary, glaucomaSummary, hrSummary].join(" | "),
+    validation_warnings: warnings,
     gradcam_overlay_base64: prediction.heatmap ?? prediction.gradcam_overlay_base64,
     disclaimer:
       prediction.disclaimer ||
-      [drSummary, prediction.referral, glaucomaSummary, glaucoma?.risk_detail, hrSummary, hypertensiveRetinopathy?.recommendation, prediction.confidence_warning, ...optionalWarnings]
+      [drSummary, prediction.referral, glaucomaSummary, glaucomaDetail, hrSummary, hypertensiveRetinopathy?.recommendation, prediction.confidence_warning, ...optionalWarnings]
         .filter(Boolean)
         .join(" | ") ||
       "Fundus AI screening output. Requires clinician review.",
