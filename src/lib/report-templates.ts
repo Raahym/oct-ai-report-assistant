@@ -65,29 +65,29 @@ export const reportTemplates: Record<
       "Repeat or verify image quality, compare with prior topography if available, and review clinically before confirming disease or normal status."
   },
   NO_DR: {
-    findings: "The fundus image does not show AI-screening features of diabetic retinopathy.",
+    findings: "The combined fundus screening did not show AI-screening features of diabetic retinopathy. Glaucoma and hypertensive-retinopathy outputs should be reviewed in the model summary.",
     impression: "AI-assisted fundus screening suggests no diabetic retinopathy.",
-    recommendation: "Routine diabetic eye screening and clinician review are advised."
+    recommendation: "Review the glaucoma CDR/risk and hypertensive-retinopathy status from the model summary, then continue routine diabetic eye screening if clinically appropriate."
   },
   MILD_DR: {
-    findings: "The fundus image shows mild AI-screening features that may be consistent with early diabetic retinopathy.",
+    findings: "The combined fundus screening shows mild AI-screening features that may be consistent with early diabetic retinopathy. Glaucoma and hypertensive-retinopathy outputs should be reviewed in the model summary.",
     impression: "AI-assisted fundus screening suggests mild diabetic retinopathy.",
-    recommendation: "Clinical review, glycaemic control optimisation, and follow-up screening are advised."
+    recommendation: "Review the glaucoma CDR/risk and hypertensive-retinopathy status, optimise systemic risk factors, and plan follow-up after clinician review."
   },
   MODERATE_DR: {
-    findings: "The fundus image shows moderate AI-screening features of diabetic retinopathy.",
+    findings: "The combined fundus screening shows moderate AI-screening features of diabetic retinopathy. Glaucoma and hypertensive-retinopathy outputs should be reviewed in the model summary.",
     impression: "AI-assisted fundus screening suggests moderate diabetic retinopathy.",
-    recommendation: "Ophthalmology review and correlation with visual acuity, fundus examination, and diabetic history are advised."
+    recommendation: "Ophthalmology review is advised, with correlation against visual acuity, fundus examination, glaucoma risk, hypertensive-retinopathy status, and diabetic history."
   },
   SEVERE_DR: {
-    findings: "The fundus image shows severe AI-screening features of diabetic retinopathy.",
+    findings: "The combined fundus screening shows severe AI-screening features of diabetic retinopathy. Glaucoma and hypertensive-retinopathy outputs should be reviewed in the model summary.",
     impression: "AI-assisted fundus screening suggests severe diabetic retinopathy.",
-    recommendation: "Urgent ophthalmology referral is advised after clinician confirmation."
+    recommendation: "Urgent ophthalmology referral is advised after clinician confirmation, especially if glaucoma or hypertensive-retinopathy outputs are also abnormal."
   },
   PROLIFERATIVE_DR: {
-    findings: "The fundus image shows AI-screening features concerning for proliferative diabetic retinopathy.",
+    findings: "The combined fundus screening shows AI-screening features concerning for proliferative diabetic retinopathy. Glaucoma and hypertensive-retinopathy outputs should be reviewed in the model summary.",
     impression: "AI-assisted fundus screening suggests proliferative diabetic retinopathy.",
-    recommendation: "Emergency or urgent retinal specialist review is advised after clinician confirmation."
+    recommendation: "Emergency or urgent retinal specialist review is advised after clinician confirmation, with attention to concurrent glaucoma or hypertensive-retinopathy risk."
   }
 };
 

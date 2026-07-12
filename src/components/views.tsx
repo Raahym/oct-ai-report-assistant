@@ -956,7 +956,7 @@ export function RetinaModuleView() {
           <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             <p className="font-black">Deployment note</p>
             <p className="mt-2 leading-6">
-              Group 3 code is received and staged. The live AFIO upload route is intentionally blocked from running retina inference until the ONNX/PTH model files are placed in the Retina backend and the Render URL is connected.
+              Group 3 is live on Render. One fundus upload runs diabetic-retinopathy severity, glaucoma CDR/risk, and hypertensive-retinopathy screening together, then routes the combined result into doctor review.
             </p>
           </div>
         </div>

@@ -25,7 +25,7 @@ async function postImagePrediction(file: File, backendUrl: string | undefined, m
     let detail = "AI prediction failed.";
     try {
       const body = await response.json();
-      detail = body.detail ?? detail;
+      detail = body.detail ?? body.error ?? detail;
     } catch {
       // Keep the generic message if the backend did not return JSON.
     }
@@ -39,13 +39,13 @@ async function postImagePrediction(file: File, backendUrl: string | undefined, m
   };
 }
 
-async function postImageEndpoint(file: File, endpointUrl: string | undefined, missingMessage: string): Promise<BackendPrediction> {
+async function postImageEndpoint(file: File, endpointUrl: string | undefined, missingMessage: string, fieldName = "file"): Promise<BackendPrediction> {
   if (!endpointUrl) {
     throw new Error(missingMessage);
   }
 
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append(fieldName, file);
   const startedAt = performance.now();
 
   let response: Response;
@@ -62,7 +62,7 @@ async function postImageEndpoint(file: File, endpointUrl: string | undefined, mi
     let detail = "AI prediction failed.";
     try {
       const body = await response.json();
-      detail = body.detail ?? detail;
+      detail = body.detail ?? body.error ?? detail;
     } catch {
       // Keep the generic message if the backend did not return JSON.
     }
@@ -114,15 +114,35 @@ export async function predictVKG(file: File): Promise<BackendPrediction> {
 }
 
 export async function predictRetina(file: File): Promise<BackendPrediction> {
-  return normalizeRetinaPrediction(
-    await postImagePrediction(
-      file,
-      process.env.NEXT_PUBLIC_RETINA_BACKEND_URL,
-      "NEXT_PUBLIC_RETINA_BACKEND_URL is missing. Add the Retina Render service URL.",
-      "image"
-    )
-  );
+  const retinaBackendUrl = process.env.NEXT_PUBLIC_RETINA_BACKEND_URL?.replace(/\/$/, "");
+  if (!retinaBackendUrl) {
+    throw new Error("NEXT_PUBLIC_RETINA_BACKEND_URL is missing. Add the Retina Render service URL.");
+  }
+
+  const [dr, glaucoma, hypertensiveRetinopathy] = await Promise.all([
+    postImageEndpoint(file, `${retinaBackendUrl}/predict`, "Retina diabetic-retinopathy endpoint is missing.", "image"),
+    postImageEndpoint(file, `${retinaBackendUrl}/predict-glaucoma`, "Retina glaucoma endpoint is missing.", "image"),
+    postImageEndpoint(file, `${retinaBackendUrl}/predict-hr`, "Retina hypertensive-retinopathy endpoint is missing.", "image"),
+  ]);
+
+  return normalizeRetinaPrediction(dr, glaucoma as RetinaGlaucomaPrediction, hypertensiveRetinopathy as RetinaHrPrediction);
 }
+
+type RetinaGlaucomaPrediction = {
+  cdr?: number;
+  risk_level?: string;
+  risk_detail?: string;
+  disc_pixels?: number;
+  cup_pixels?: number;
+};
+
+type RetinaHrPrediction = {
+  hr_detected?: boolean;
+  probability?: number;
+  risk_level?: string;
+  recommendation?: string;
+  note?: string;
+};
 
 function normalizeRetinaPrediction(prediction: BackendPrediction & {
   predicted_class?: number;
@@ -132,12 +152,19 @@ function normalizeRetinaPrediction(prediction: BackendPrediction & {
   heatmap?: string | null;
   low_confidence?: boolean;
   confidence_warning?: string;
-}): BackendPrediction {
+}, glaucoma?: RetinaGlaucomaPrediction, hypertensiveRetinopathy?: RetinaHrPrediction): BackendPrediction {
   const labels = ["NO_DR", "MILD_DR", "MODERATE_DR", "SEVERE_DR", "PROLIFERATIVE_DR"] as const;
   const scoreValues = Array.isArray(prediction.scores)
     ? prediction.scores
     : labels.map((_, index) => Number((prediction.scores as Record<string, number> | undefined)?.[String(index)] ?? 0));
   const predictedClass = labels[prediction.predicted_class ?? 0] ?? "NO_DR";
+  const glaucomaSummary = glaucoma
+    ? `Glaucoma: ${glaucoma.risk_level ?? "Unknown"}${typeof glaucoma.cdr === "number" ? `, CDR ${glaucoma.cdr}` : ""}`
+    : "Glaucoma: not run";
+  const hrSummary = hypertensiveRetinopathy
+    ? `Hypertensive retinopathy: ${hypertensiveRetinopathy.risk_level ?? (hypertensiveRetinopathy.hr_detected ? "Detected" : "Not detected")}${typeof hypertensiveRetinopathy.probability === "number" ? `, probability ${Math.round(hypertensiveRetinopathy.probability * 100)}%` : ""}`
+    : "Hypertensive retinopathy: not run";
+  const drSummary = `Diabetic retinopathy: ${prediction.severity_label ?? predictedClass}`;
 
   return {
     ...prediction,
@@ -151,12 +178,21 @@ function normalizeRetinaPrediction(prediction: BackendPrediction & {
       PROLIFERATIVE_DR: scoreValues[4] ?? 0,
     },
     is_valid_oct: true,
-    model_name: prediction.model_name || "Retina Diabetic Retinopathy Screening Model",
-    model_version: prediction.model_version || "Group 3 ONNX",
+    quality_metrics: {
+      ...(prediction.quality_metrics ?? {}),
+      glaucoma_cdr: glaucoma?.cdr ?? "",
+      glaucoma_risk: glaucoma?.risk_level ?? "",
+      glaucoma_detail: glaucoma?.risk_detail ?? "",
+      hypertensive_retinopathy_detected: hypertensiveRetinopathy?.hr_detected ?? "",
+      hypertensive_retinopathy_probability: hypertensiveRetinopathy?.probability ?? "",
+      hypertensive_retinopathy_recommendation: hypertensiveRetinopathy?.recommendation ?? "",
+    },
+    model_name: "Retina Combined Screening Model",
+    model_version: [drSummary, glaucomaSummary, hrSummary].join(" | "),
     gradcam_overlay_base64: prediction.heatmap ?? prediction.gradcam_overlay_base64,
     disclaimer:
       prediction.disclaimer ||
-      [prediction.severity_label, prediction.referral, prediction.confidence_warning]
+      [drSummary, prediction.referral, glaucomaSummary, glaucoma?.risk_detail, hrSummary, hypertensiveRetinopathy?.recommendation, prediction.confidence_warning]
         .filter(Boolean)
         .join(" | ") ||
       "Fundus AI screening output. Requires clinician review.",
