@@ -131,17 +131,24 @@ function uniqueUrls(urls: Array<string | undefined>): string[] {
 }
 
 export async function predictRetina(file: File): Promise<BackendPrediction> {
-  const retinaBackendUrl = process.env.NEXT_PUBLIC_RETINA_BACKEND_URL?.replace(/\/$/, "");
-  if (!retinaBackendUrl) {
-    throw new Error("NEXT_PUBLIC_RETINA_BACKEND_URL is missing. Add the Retina Render service URL.");
+  const combinedRetinaUrl = process.env.NEXT_PUBLIC_RETINA_BACKEND_URL?.replace(/\/$/, "");
+  const retinaDrUrl = (process.env.NEXT_PUBLIC_RETINA_DR_BACKEND_URL || combinedRetinaUrl)?.replace(/\/$/, "");
+  const retinaGlaucomaUrl = (process.env.NEXT_PUBLIC_RETINA_GLAUCOMA_BACKEND_URL || combinedRetinaUrl)?.replace(/\/$/, "");
+  const retinaHrUrl = (process.env.NEXT_PUBLIC_RETINA_HR_BACKEND_URL || combinedRetinaUrl)?.replace(/\/$/, "");
+  if (!retinaDrUrl) {
+    throw new Error("Retina DR backend URL is missing. Add NEXT_PUBLIC_RETINA_DR_BACKEND_URL or NEXT_PUBLIC_RETINA_BACKEND_URL.");
   }
 
-  const dr = await postImageEndpoint(file, `${retinaBackendUrl}/predict`, "Retina diabetic-retinopathy endpoint is missing.", "image").catch((error) => {
+  const dr = await postImageEndpoint(file, `${retinaDrUrl}/predict`, "Retina diabetic-retinopathy endpoint is missing.", "image").catch((error) => {
     throw new Error(`Retina DR endpoint failed: ${error instanceof Error ? error.message : "unknown error"}`);
   });
   const [glaucomaResult, hypertensiveRetinopathyResult] = await Promise.allSettled([
-    postImageEndpoint(file, `${retinaBackendUrl}/predict-glaucoma`, "Retina glaucoma endpoint is missing.", "image"),
-    postImageEndpoint(file, `${retinaBackendUrl}/predict-hr`, "Retina hypertensive-retinopathy endpoint is missing.", "image"),
+    retinaGlaucomaUrl
+      ? postImageEndpoint(file, `${retinaGlaucomaUrl}/predict-glaucoma`, "Retina glaucoma endpoint is missing.", "image")
+      : Promise.reject(new Error("NEXT_PUBLIC_RETINA_GLAUCOMA_BACKEND_URL is missing.")),
+    retinaHrUrl
+      ? postImageEndpoint(file, `${retinaHrUrl}/predict-hr`, "Retina hypertensive-retinopathy endpoint is missing.", "image")
+      : Promise.reject(new Error("NEXT_PUBLIC_RETINA_HR_BACKEND_URL is missing.")),
   ]);
   const optionalWarnings = [
     glaucomaResult.status === "rejected" ? `Glaucoma endpoint unavailable: ${glaucomaResult.reason instanceof Error ? glaucomaResult.reason.message : "unknown error"}` : "",

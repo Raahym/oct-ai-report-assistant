@@ -99,3 +99,68 @@ services:
         value: "true"
       - key: ORT_NUM_THREADS
         value: "1"
+      - key: RETINA_SERVICE
+        value: all
+  - type: web
+    name: afio-retina-dr-backend
+    runtime: node
+    rootDir: retina-ai-backend
+    buildCommand: >-
+      python -m pip install gdown &&
+      python -m gdown --folder https://drive.google.com/drive/folders/1VBxwdx-CoSBP906N3Zx_gEjRGfeQtglo --output ../models &&
+      npm install
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ALLOWED_ORIGIN
+        value: https://cvclinics.online
+      - key: SKIP_GRADCAM
+        value: "true"
+      - key: ORT_NUM_THREADS
+        value: "1"
+      - key: RETINA_SERVICE
+        value: dr
+  - type: web
+    name: afio-retina-glaucoma-backend
+    runtime: node
+    rootDir: retina-ai-backend
+    buildCommand: >-
+      python -m pip install gdown &&
+      python -m gdown --folder https://drive.google.com/drive/folders/1VBxwdx-CoSBP906N3Zx_gEjRGfeQtglo --output ../models &&
+      npm install
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ALLOWED_ORIGIN
+        value: https://cvclinics.online
+      - key: SKIP_GRADCAM
+        value: "true"
+      - key: ORT_NUM_THREADS
+        value: "1"
+      - key: RETINA_SERVICE
+        value: glaucoma
+  - type: web
+    name: afio-retina-hr-backend
+    runtime: node
+    rootDir: retina-ai-backend
+    buildCommand: >-
+      python -m pip install gdown &&
+      python -m gdown --folder https://drive.google.com/drive/folders/1VBxwdx-CoSBP906N3Zx_gEjRGfeQtglo --output ../models &&
+      npm install
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ALLOWED_ORIGIN
+        value: https://cvclinics.online
+      - key: SKIP_GRADCAM
+        value: "true"
+      - key: ORT_NUM_THREADS
+        value: "1"
+      - key: RETINA_SERVICE
+        value: hr

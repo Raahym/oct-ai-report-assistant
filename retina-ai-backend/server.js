@@ -11,6 +11,7 @@ const PORT = Number(process.env.PORT || 3000);
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 const PYTHON_BIN = process.env.PYTHON_BIN || "python";
 const SKIP_GRADCAM = process.env.SKIP_GRADCAM === "true";
+const RETINA_SERVICE = (process.env.RETINA_SERVICE || "all").toLowerCase();
 const MODEL_PATH = path.join(__dirname, "..", "models", "smoke_test.onnx");
 const GLAUCOMA_MODEL_PATH = path.join(
   __dirname,
@@ -62,6 +63,10 @@ let session;
 let glaucomaSession;
 let hrSession;
 let gradcamProcess;
+
+function serviceEnabled(serviceName) {
+  return RETINA_SERVICE === "all" || RETINA_SERVICE === serviceName;
+}
 
 async function preprocessImageDR(buffer) {
   const { data } = await sharp(buffer)
@@ -344,10 +349,21 @@ function getRiskLevel(cdr) {
 }
 
 app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
+  res.json({
+    status: "ok",
+    service: RETINA_SERVICE,
+    models_loaded: {
+      dr: Boolean(session),
+      glaucoma: Boolean(glaucomaSession),
+      hr: Boolean(hrSession),
+    },
+  });
 });
 
 app.post("/predict", upload.single("image"), async (req, res) => {
+  if (!serviceEnabled("dr")) {
+    return res.status(404).json({ error: "DR model is not enabled on this Retina service" });
+  }
   if (!req.file) {
     return res.status(400).json({ error: "No image file uploaded" });
   }
@@ -393,6 +409,9 @@ app.post("/predict", upload.single("image"), async (req, res) => {
 });
 
 app.post("/predict-glaucoma", upload.single("image"), async (req, res) => {
+  if (!serviceEnabled("glaucoma")) {
+    return res.status(404).json({ error: "Glaucoma model is not enabled on this Retina service" });
+  }
   if (!req.file) {
     return res.status(400).json({ error: "No image file uploaded" });
   }
@@ -436,6 +455,9 @@ app.post("/predict-glaucoma", upload.single("image"), async (req, res) => {
 });
 
 app.post("/predict-hr", upload.single("image"), async (req, res) => {
+  if (!serviceEnabled("hr")) {
+    return res.status(404).json({ error: "Hypertensive-retinopathy model is not enabled on this Retina service" });
+  }
   if (!req.file) {
     return res.status(400).json({ error: "No image file uploaded" });
   }
@@ -499,15 +521,23 @@ function startGradCam() {
 }
 
 async function start() {
-  gradcamProcess = startGradCam();
+  if (serviceEnabled("dr")) {
+    gradcamProcess = startGradCam();
+  }
 
   await new Promise((resolve) => setTimeout(resolve, 3000));
 
-  session = await ort.InferenceSession.create(MODEL_PATH, ORT_SESSION_OPTIONS);
-  glaucomaSession = await ort.InferenceSession.create(GLAUCOMA_MODEL_PATH, ORT_SESSION_OPTIONS);
-  hrSession = await ort.InferenceSession.create(HR_MODEL_PATH, ORT_SESSION_OPTIONS);
+  if (serviceEnabled("dr")) {
+    session = await ort.InferenceSession.create(MODEL_PATH, ORT_SESSION_OPTIONS);
+  }
+  if (serviceEnabled("glaucoma")) {
+    glaucomaSession = await ort.InferenceSession.create(GLAUCOMA_MODEL_PATH, ORT_SESSION_OPTIONS);
+  }
+  if (serviceEnabled("hr")) {
+    hrSession = await ort.InferenceSession.create(HR_MODEL_PATH, ORT_SESSION_OPTIONS);
+  }
   app.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
+    console.log(`Retina ${RETINA_SERVICE} service listening on port ${PORT}`);
   });
 }
 
