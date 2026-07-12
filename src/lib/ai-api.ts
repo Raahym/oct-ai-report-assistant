@@ -256,7 +256,15 @@ function normalizeVkgEnsemblePrediction(predictions: BackendPrediction[]): Backe
   }
 
   const normalized = predictions.map(normalizeVkgPrediction);
-  const probabilitySum = normalized.reduce(
+  const validPredictions = normalized.filter((prediction) => {
+    const probabilities = prediction.probabilities as Record<string, number>;
+    return (prediction.is_valid_oct ?? true) && (probabilities.NORMAL != null || probabilities.KCN != null);
+  });
+  if (validPredictions.length === 0) {
+    return normalized[0];
+  }
+
+  const probabilitySum = validPredictions.reduce(
     (sum, prediction) => {
       const probabilities = prediction.probabilities as Record<string, number>;
       return {
@@ -268,9 +276,9 @@ function normalizeVkgEnsemblePrediction(predictions: BackendPrediction[]): Backe
     { NORMAL: 0, KCN: 0, SUSPECT: 0 }
   );
   const probabilities = {
-    NORMAL: Number((probabilitySum.NORMAL / normalized.length).toFixed(4)),
-    KCN: Number((probabilitySum.KCN / normalized.length).toFixed(4)),
-    SUSPECT: Number((probabilitySum.SUSPECT / normalized.length).toFixed(4)),
+    NORMAL: Number((probabilitySum.NORMAL / validPredictions.length).toFixed(4)),
+    KCN: Number((probabilitySum.KCN / validPredictions.length).toFixed(4)),
+    SUSPECT: Number((probabilitySum.SUSPECT / validPredictions.length).toFixed(4)),
   };
   const prediction = probabilities.KCN >= 0.5 ? "KCN" : probabilities.SUSPECT >= 0.4 ? "SUSPECT" : "NORMAL";
   const confidence = prediction === "KCN" ? probabilities.KCN : prediction === "SUSPECT" ? probabilities.SUSPECT : probabilities.NORMAL;
