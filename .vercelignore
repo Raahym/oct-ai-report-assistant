@@ -1,0 +1,13 @@
+.git
+.next
+node_modules
+AFIO_BACKUPS
+models
+retina-ai-backend
+oct-ai-backend
+corneal-ai-backend
+rand test pics
+test
+*.docx
+*_HANDOVER_*.md
+GROUP*_*.md
