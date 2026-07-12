@@ -90,7 +90,7 @@ alter table scans add column if not exists department_id uuid references departm
 alter table scans add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'retina'));
 alter table ai_results add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'retina'));
 alter table ai_results drop constraint if exists ai_results_predicted_class_check;
-alter table ai_results add constraint ai_results_predicted_class_check check (predicted_class in ('CNV', 'DME', 'DRUSEN', 'NORMAL', 'KCN', 'SUSPECT'));
+alter table ai_results add constraint ai_results_predicted_class_check check (predicted_class in ('CNV', 'DME', 'DRUSEN', 'NORMAL', 'KCN', 'SUSPECT', 'NO_DR', 'MILD_DR', 'MODERATE_DR', 'SEVERE_DR', 'PROLIFERATIVE_DR'));
 alter table reports add column if not exists clinic_id uuid references clinics(id);
 alter table reports add column if not exists department_id uuid references departments(id);
 alter table reports add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'retina'));
@@ -98,7 +98,7 @@ alter table if exists report_templates add column if not exists module_id text d
 update report_templates set module_id = 'oct' where module_id is null;
 alter table report_templates drop constraint if exists report_templates_pkey;
 alter table report_templates drop constraint if exists report_templates_disease_class_check;
-alter table report_templates add constraint report_templates_disease_class_check check (disease_class in ('CNV', 'DME', 'DRUSEN', 'NORMAL', 'KCN', 'SUSPECT'));
+alter table report_templates add constraint report_templates_disease_class_check check (disease_class in ('CNV', 'DME', 'DRUSEN', 'NORMAL', 'KCN', 'SUSPECT', 'NO_DR', 'MILD_DR', 'MODERATE_DR', 'SEVERE_DR', 'PROLIFERATIVE_DR'));
 do $$
 begin
   if exists (

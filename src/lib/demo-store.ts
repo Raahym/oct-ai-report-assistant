@@ -375,7 +375,12 @@ function audit(data: AppData, action: string, recordType: string, recordId: stri
 function normalizeProbabilities(prediction: ClinicalClass) {
   const confidence = Number((0.79 + Math.random() * 0.14).toFixed(2));
   const probabilities = {} as Partial<Record<ClinicalClass, number>>;
-  const classes: ClinicalClass[] = prediction === "KCN" || prediction === "SUSPECT" ? ["NORMAL", "KCN", "SUSPECT"] : ["CNV", "DME", "DRUSEN", "NORMAL"];
+  const retinaClasses: ClinicalClass[] = ["NO_DR", "MILD_DR", "MODERATE_DR", "SEVERE_DR", "PROLIFERATIVE_DR"];
+  const classes: ClinicalClass[] = retinaClasses.includes(prediction)
+    ? retinaClasses
+    : prediction === "KCN" || prediction === "SUSPECT"
+      ? ["NORMAL", "KCN", "SUSPECT"]
+      : ["CNV", "DME", "DRUSEN", "NORMAL"];
   const others = classes.filter((key) => key !== prediction);
   probabilities[prediction] = confidence;
   const remaining = 1 - confidence;
@@ -1220,7 +1225,11 @@ export function useDemoStore() {
       }, "Scan deleted", "scan", scanId, "Scan, linked analysis, and reports removed"));
     },
     runAnalysis(scan: Scan) {
-      const classes: ClinicalClass[] = scan.moduleId === "vkg" ? ["NORMAL", "KCN", "SUSPECT"] : ["CNV", "DME", "DRUSEN", "NORMAL"];
+      const classes: ClinicalClass[] = scan.moduleId === "retina"
+        ? ["NO_DR", "MILD_DR", "MODERATE_DR", "SEVERE_DR", "PROLIFERATIVE_DR"]
+        : scan.moduleId === "vkg"
+          ? ["NORMAL", "KCN", "SUSPECT"]
+          : ["CNV", "DME", "DRUSEN", "NORMAL"];
       const predictedClass = classes[Math.floor(Math.random() * classes.length)];
       const probabilities = normalizeProbabilities(predictedClass);
       const aiResult: AiResult = {

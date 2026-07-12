@@ -1,6 +1,6 @@
 create table if not exists report_templates (
   module_id text not null default 'oct' check (module_id in ('oct', 'vkg', 'corneal', 'retina')),
-  disease_class text not null check (disease_class in ('CNV', 'DME', 'DRUSEN', 'NORMAL', 'KCN', 'SUSPECT')),
+  disease_class text not null check (disease_class in ('CNV', 'DME', 'DRUSEN', 'NORMAL', 'KCN', 'SUSPECT', 'NO_DR', 'MILD_DR', 'MODERATE_DR', 'SEVERE_DR', 'PROLIFERATIVE_DR')),
   findings text not null default '',
   impression text not null default '',
   recommendation text not null default '',

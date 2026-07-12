@@ -47,7 +47,7 @@ create table if not exists scans (
 create table if not exists ai_results (
   id uuid primary key default gen_random_uuid(),
   scan_id uuid references scans(id) on delete cascade,
-  predicted_class text not null check (predicted_class in ('CNV', 'DME', 'DRUSEN', 'NORMAL', 'KCN', 'SUSPECT')),
+  predicted_class text not null check (predicted_class in ('CNV', 'DME', 'DRUSEN', 'NORMAL', 'KCN', 'SUSPECT', 'NO_DR', 'MILD_DR', 'MODERATE_DR', 'SEVERE_DR', 'PROLIFERATIVE_DR')),
   confidence numeric not null,
   probabilities jsonb not null,
   model_name text,
