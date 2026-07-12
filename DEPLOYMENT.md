@@ -16,9 +16,17 @@ Deploy the FastAPI PyTorch backend somewhere that supports long-running Python s
 NEXT_PUBLIC_SUPABASE_URL=https://vxivcawwlxcrnkofbywg.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your Supabase anon public key
 NEXT_PUBLIC_AI_BACKEND_URL=https://your deployed FastAPI backend URL
+NEXT_PUBLIC_CORNEAL_BACKEND_URL=https://your deployed corneal FastAPI backend URL
+NEXT_PUBLIC_RETINA_BACKEND_URL=https://your deployed retina backend URL
+NEXT_PUBLIC_APP_URL=https://cvclinics.online
+SUPABASE_SERVICE_ROLE_KEY=your Supabase service role key
+RESEND_API_KEY=your Resend API key
+EMAIL_FROM=AFIO Platform <reports@cvclinics.online>
 ```
 
 4. Deploy.
+
+`RESEND_API_KEY` is optional for the hospital onboarding flow. If it is missing, AFIO still shows the activation link and temporary password in the success panel so onboarding can continue manually.
 
 ## Supabase Auth URLs
 
@@ -77,6 +85,8 @@ For public patient report lookup and automatic access emails, also add:
 ```text
 SUPABASE_URL=https://vxivcawwlxcrnkofbywg.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your Supabase service role key
+RESEND_API_KEY=your Resend API key
+EMAIL_FROM=AFIO Platform <reports@cvclinics.online>
 FRONTEND_URL=https://oct-ai-report-assistant.vercel.app
 SMTP_HOST=your SMTP host
 SMTP_PORT=587

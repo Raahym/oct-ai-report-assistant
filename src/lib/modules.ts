@@ -7,7 +7,7 @@ export type ClinicalModule = {
   name: string;
   department: string;
   shortName: string;
-  status: "live" | "training" | "awaiting_model";
+  status: "live" | "training" | "awaiting_model" | "model_received";
   description: string;
   route?: string;
   accent: string;
@@ -52,8 +52,8 @@ export const clinicalModules: ClinicalModule[] = [
     name: "Retinal Fundus Screening",
     department: "Retina Department",
     shortName: "Retina",
-    status: "awaiting_model",
-    description: "Retinal fundus module for DR/glaucoma-style reports once its model/API is available.",
+    status: "model_received",
+    description: "Fundus screening workflow for DR severity, glaucoma risk, and hypertensive retinopathy.",
     accent: "bg-violet-50 text-violet-800 ring-violet-200",
     icon: Eye
   }

@@ -8,6 +8,14 @@ services:
     envVars:
       - key: ALLOWED_ORIGINS
         sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
   - type: web
     name: afio-corneal-ai-backend
     runtime: python
@@ -19,3 +27,11 @@ services:
         sync: false
       - key: TORCH_NUM_THREADS
         value: "2"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false

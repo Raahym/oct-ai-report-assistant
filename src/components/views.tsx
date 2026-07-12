@@ -43,11 +43,15 @@ const MIN_PATIENT_AGE = 0;
 const MAX_PATIENT_AGE = 130;
 
 function moduleFromSearchParams(searchParams: ReturnType<typeof useSearchParams>): ModuleId {
-  return searchParams.get("module") === "vkg" ? "vkg" : "oct";
+  const moduleId = searchParams.get("module");
+  return moduleId === "vkg" || moduleId === "retina" || moduleId === "corneal" ? moduleId : "oct";
 }
 
 function getModuleLabel(moduleId: ModuleId) {
-  return moduleId === "vkg" ? "VKG" : "OCT";
+  if (moduleId === "vkg") return "VKG";
+  if (moduleId === "retina") return "Retina";
+  if (moduleId === "corneal") return "Corneal";
+  return "OCT";
 }
 
 function filterPatientsForModule(patients: Patient[], scans: Scan[], moduleId: ModuleId) {
@@ -848,6 +852,139 @@ export function VkgModuleView() {
   );
 }
 
+export function RetinaModuleView() {
+  const store = useDemoStore();
+  const [activeTab, setActiveTab] = useState<"dr" | "glaucoma" | "hr">("dr");
+  const retinaScans = store.data.scans.filter((scan) => (scan.moduleId ?? "oct") === "retina");
+  const retinaReports = store.data.reports.filter((report) => (report.moduleId ?? "oct") === "retina");
+  const retinaPatientIds = new Set(retinaScans.map((scan) => scan.patientId));
+  const retinaPatients = store.data.patients.filter((patient) => retinaPatientIds.has(patient.id) || patient.moduleId === "retina");
+  const tabs = [
+    {
+      id: "dr",
+      label: "Diabetic Retinopathy",
+      endpoint: "/predict",
+      model: "DR severity ONNX + optional Grad-CAM",
+      classes: "No DR, Mild, Moderate, Severe, Proliferative",
+      output: "Severity, confidence, referral guidance, heatmap when model weights are present."
+    },
+    {
+      id: "glaucoma",
+      label: "Glaucoma",
+      endpoint: "/predict-glaucoma",
+      model: "Optic disc/cup segmentation ONNX",
+      classes: "Normal, Monitor, Suspicious, High risk",
+      output: "Cup-to-disc ratio, risk level, disc/cup pixel counts."
+    },
+    {
+      id: "hr",
+      label: "Hypertensive Retinopathy",
+      endpoint: "/predict-hr",
+      model: "EfficientNet ONNX binary classifier",
+      classes: "No HR Detected, HR Detected",
+      output: "Probability, risk label, referral recommendation."
+    }
+  ] as const;
+  const active = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
+
+  return (
+    <>
+      <PageTitle
+        title="Retinal Fundus Screening"
+        subtitle="Group 3 fundus workflow for DR severity, glaucoma risk, and hypertensive retinopathy screening. Patients, scans, and reports stay separate from OCT and VKG."
+        action={
+          <div className="grid gap-2 sm:flex">
+            <Link href="/patients/new?module=retina" className="block">
+              <Button className="w-full">
+                <Plus size={16} />
+                New Patient
+              </Button>
+            </Link>
+            <Link href="/scans/upload?module=retina" className="block">
+              <Button className="w-full" variant="secondary">
+                <Upload size={16} />
+                Upload Fundus
+              </Button>
+            </Link>
+            <Link href="/reports/history?module=retina" className="block">
+              <Button className="w-full" variant="secondary">
+                <ClipboardCheck size={16} />
+                Reports
+              </Button>
+            </Link>
+          </div>
+        }
+      />
+      <SafetyNotice />
+      <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        {[
+          ["Retina patients", retinaPatients.length],
+          ["Fundus scans", retinaScans.length],
+          ["Reports", retinaReports.length],
+          ["AI services", 3],
+          ["Deployment", "Pending models"]
+        ].map(([label, value]) => (
+          <Card key={label} className="p-5">
+            <p className="text-sm font-semibold text-slate-500">{label}</p>
+            <p className="mt-2 text-2xl font-black text-slate-950">{value}</p>
+          </Card>
+        ))}
+      </div>
+      <Card className="mt-5 p-5">
+        <div className="flex flex-wrap gap-2">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              className={`rounded-md border px-3 py-2 text-sm font-black ${activeTab === tab.id ? "border-clinic-200 bg-clinic-50 text-clinic-800" : "border-slate-200 bg-white text-slate-600"}`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_360px]">
+          <div>
+            <p className="text-xs font-black uppercase text-slate-500">{active.endpoint}</p>
+            <h3 className="mt-1 text-xl font-black text-slate-950">{active.label}</h3>
+            <p className="mt-3 text-sm leading-6 text-slate-600">{active.output}</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <Info label="Model" value={active.model} />
+              <Info label="Classes" value={active.classes} />
+            </div>
+          </div>
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-black">Deployment note</p>
+            <p className="mt-2 leading-6">
+              Group 3 code is received and staged. The live AFIO upload route is intentionally blocked from running retina inference until the ONNX/PTH model files are placed in the Retina backend and the Render URL is connected.
+            </p>
+          </div>
+        </div>
+      </Card>
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <Card>
+          <CardHeader title="Recent Retina Patients" subtitle="Fundus patients only. OCT and VKG records do not appear here." />
+          <div className="divide-y divide-slate-100">
+            {retinaPatients.slice(0, 5).map((patient) => (
+              <Link key={patient.id} href={`/patients/${patient.id}`} className="flex items-center justify-between px-5 py-4 hover:bg-slate-50">
+                <div>
+                  <p className="font-bold text-slate-900">{patient.fullName}</p>
+                  <p className="text-sm text-slate-500">{patient.patientCode}</p>
+                </div>
+                <p className="text-sm font-semibold text-clinic-700">Open</p>
+              </Link>
+            ))}
+            {retinaPatients.length === 0 ? <EmptyState title="No retina patients yet" body="Create a retina patient before uploading fundus images." /> : null}
+          </div>
+        </Card>
+        <Card>
+          <CardHeader title="Recent Retina Reports" subtitle="Report history will populate after the Retina backend is connected." />
+          <ReportRows reports={retinaReports.slice(0, 5)} />
+        </Card>
+      </div>
+    </>
+  );
+}
+
 export function LockedModuleView({ moduleName, owner, description }: { moduleName: string; owner: string; description: string }) {
   return (
     <>
@@ -877,9 +1014,18 @@ export function AfioBusinessAdminView() {
     name: "",
     code: "",
     adminEmail: "",
+    adminPassword: "",
     subscriptionStatus: "trial" as "trial" | "active" | "past_due" | "suspended",
     enabledModules: ["oct"] as ModuleId[]
   });
+  const [provisionedAdmin, setProvisionedAdmin] = useState<{
+    hospitalName: string;
+    adminEmail: string;
+    temporaryPassword: string;
+    activationLink?: string;
+    emailSent: boolean;
+    emailMessage?: string;
+  } | null>(null);
   const [hospitalDrafts, setHospitalDrafts] = useState<Record<string, { name: string; code: string; adminEmail: string }>>({});
   const allModuleIds: ModuleId[] = ["oct", "vkg", "corneal", "retina"];
   const moduleNames: Record<ModuleId, string> = {
@@ -913,10 +1059,19 @@ export function AfioBusinessAdminView() {
 
   const createHospital = async () => {
     setError("");
+    setProvisionedAdmin(null);
     setSavingHospitalId("new");
     try {
-      await store.createHospital(newHospital);
-      setNewHospital({ name: "", code: "", adminEmail: "", subscriptionStatus: "trial", enabledModules: ["oct"] });
+      const result = await store.createHospital(newHospital);
+      setProvisionedAdmin({
+        hospitalName: result.hospital.name,
+        adminEmail: result.hospital.adminEmail ?? newHospital.adminEmail,
+        temporaryPassword: result.temporaryPassword,
+        activationLink: result.activationLink,
+        emailSent: result.emailSent,
+        emailMessage: result.emailMessage
+      });
+      setNewHospital({ name: "", code: "", adminEmail: "", adminPassword: "", subscriptionStatus: "trial", enabledModules: ["oct"] });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add hospital.");
     } finally {
@@ -959,15 +1114,63 @@ export function AfioBusinessAdminView() {
     <>
       <PageTitle
         title="AFIO Business Admin"
-        subtitle="Manage hospitals, subscriptions, module access, and service status. This area intentionally has no patients or clinical reports."
+        subtitle="Provision hospitals, activate purchased modules, and hand ownership to the hospital administrator."
       />
       {error ? <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
+      {provisionedAdmin ? (
+        <Card className="mb-5 border-emerald-200 bg-emerald-50 p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase text-emerald-700">Hospital admin ready</p>
+              <h3 className="mt-1 text-lg font-black text-slate-950">{provisionedAdmin.hospitalName}</h3>
+              <p className="mt-2 text-sm font-semibold text-slate-700">
+                {provisionedAdmin.adminEmail} can sign in as Hospital Admin and manage that hospital's own staff.
+              </p>
+              <p className="mt-2 text-sm text-slate-600">
+                {provisionedAdmin.emailSent ? "Welcome email sent." : provisionedAdmin.emailMessage ?? "Email was not sent, so share these credentials directly."}
+              </p>
+              {provisionedAdmin.activationLink ? (
+                <p className="mt-2 break-all text-xs font-semibold text-emerald-800">{provisionedAdmin.activationLink}</p>
+              ) : null}
+            </div>
+            <div className="rounded-md border border-emerald-200 bg-white p-4 text-sm">
+              <p className="font-black text-slate-950">Temporary password</p>
+              <p className="mt-2 break-all font-mono text-slate-700">{provisionedAdmin.temporaryPassword || "Password set manually"}</p>
+              <Button
+                className="mt-3 w-full"
+                variant="secondary"
+                onClick={() => void navigator.clipboard.writeText(provisionedAdmin.temporaryPassword)}
+                disabled={!provisionedAdmin.temporaryPassword}
+              >
+                <Copy size={16} />
+                Copy Password
+              </Button>
+              {provisionedAdmin.activationLink ? (
+                <Button
+                  className="mt-2 w-full"
+                  variant="secondary"
+                  onClick={() => void navigator.clipboard.writeText(provisionedAdmin.activationLink ?? "")}
+                >
+                  <Copy size={16} />
+                  Copy Link
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </Card>
+      ) : null}
       <Card className="mb-5 p-5">
-        <CardHeader title="Add hospital" subtitle="New hospitals become selectable during staff signup and receive their own scoped patients, reports, feedback, and storage paths." />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <CardHeader title="Add hospital" subtitle="Creates the hospital workspace, purchased service access, first hospital admin login, and isolated patient/report ownership." />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <Field label="Hospital name" value={newHospital.name} onChange={(value) => setNewHospital({ ...newHospital, name: value })} />
           <Field label="Code" value={newHospital.code} placeholder="SHIFA" onChange={(value) => setNewHospital({ ...newHospital, code: value })} />
-          <Field label="Admin email optional" value={newHospital.adminEmail} onChange={(value) => setNewHospital({ ...newHospital, adminEmail: value })} />
+          <Field label="Hospital admin email" value={newHospital.adminEmail} onChange={(value) => setNewHospital({ ...newHospital, adminEmail: value })} />
+          <Field
+            label="Temporary password optional"
+            value={newHospital.adminPassword}
+            placeholder="Auto-generate if blank"
+            onChange={(value) => setNewHospital({ ...newHospital, adminPassword: value })}
+          />
           <SelectField
             label="Subscription"
             value={newHospital.subscriptionStatus}
@@ -976,9 +1179,9 @@ export function AfioBusinessAdminView() {
             onChange={(value) => setNewHospital({ ...newHospital, subscriptionStatus: value as typeof newHospital.subscriptionStatus })}
           />
           <div className="flex items-end">
-            <Button className="w-full" disabled={savingHospitalId === "new" || !newHospital.name || !newHospital.code} onClick={createHospital}>
+            <Button className="w-full" disabled={savingHospitalId === "new" || !newHospital.name || !newHospital.code || !newHospital.adminEmail} onClick={createHospital}>
               <Plus size={16} />
-              {savingHospitalId === "new" ? "Adding..." : "Add Hospital"}
+              {savingHospitalId === "new" ? "Provisioning..." : "Provision Hospital"}
             </Button>
           </div>
         </div>
@@ -1486,6 +1689,9 @@ export function UploadScanView() {
     }
     setLoading(true);
     try {
+      if (moduleId === "retina" || moduleId === "corneal") {
+        throw new Error(`${moduleLabel} AI backend is not connected yet. Use this module workspace for patient setup and deployment tracking until its Render service is live.`);
+      }
       const prediction = moduleId === "vkg" ? await predictVKG(predictionFile) : await predictOCTWithGradcam(predictionFile);
       if (!prediction.is_valid_oct) {
         const message =
