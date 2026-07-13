@@ -96,10 +96,13 @@ export async function predictOCT(file: File): Promise<BackendPrediction> {
 }
 
 export async function predictOCTWithGradcam(file: File): Promise<BackendPrediction> {
+  const gradcamBackendUrl = process.env.NEXT_PUBLIC_OCT_GRADCAM_BACKEND_URL?.replace(/\/$/, "");
+  const mainBackendUrl = process.env.NEXT_PUBLIC_AI_BACKEND_URL?.replace(/\/$/, "");
+
   try {
     return await postImageEndpoint(
       file,
-      process.env.NEXT_PUBLIC_AI_BACKEND_URL ? `${process.env.NEXT_PUBLIC_AI_BACKEND_URL.replace(/\/$/, "")}/gradcam` : undefined,
+      gradcamBackendUrl ? `${gradcamBackendUrl}/gradcam` : mainBackendUrl ? `${mainBackendUrl}/gradcam` : undefined,
       "NEXT_PUBLIC_AI_BACKEND_URL is missing. Add it to .env.local."
     );
   } catch {

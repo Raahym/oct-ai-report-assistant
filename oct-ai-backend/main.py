@@ -165,6 +165,87 @@ def predict_tensor(image_tensor: torch.Tensor) -> tuple[dict[str, float], str, f
     return probabilities, prediction, confidence
 
 
+def gradcam_prediction_and_overlay(image: Image.Image, image_tensor: torch.Tensor) -> tuple[dict[str, float], str, float, str | None]:
+    if model is None or not ENABLE_GRADCAM:
+        return {}, "INVALID_IMAGE", 0.0, None
+
+    activations: list[torch.Tensor] = []
+    gradients: list[torch.Tensor] = []
+    probabilities: dict[str, float] = {}
+    prediction = "INVALID_IMAGE"
+    confidence = 0.0
+    target_layer = model.features[-1]
+
+    def forward_hook(_module: torch.nn.Module, _inputs: tuple[torch.Tensor, ...], output: torch.Tensor) -> None:
+        activations.append(output.detach())
+
+    def backward_hook(_module: torch.nn.Module, _grad_input: tuple[torch.Tensor, ...], grad_output: tuple[torch.Tensor, ...]) -> None:
+        gradients.append(grad_output[0].detach())
+
+    forward_handle = target_layer.register_forward_hook(forward_hook)
+    backward_handle = target_layer.register_full_backward_hook(backward_hook)
+
+    try:
+        model.zero_grad(set_to_none=True)
+        with torch.enable_grad():
+            logits = model(image_tensor)
+
+        softmax = torch.softmax(logits, dim=1).squeeze(0).cpu()
+        probabilities = {
+            class_name: round(float(softmax[index]), 4)
+            for index, class_name in enumerate(CLASSES)
+        }
+        prediction = max(probabilities, key=probabilities.get)
+        confidence = probabilities[prediction]
+
+        if confidence < MIN_CONFIDENCE:
+            return probabilities, prediction, confidence, None
+
+        score = logits[:, CLASSES.index(prediction)].sum()
+        score.backward()
+
+        if not activations or not gradients:
+            return probabilities, prediction, confidence, None
+
+        feature_maps = activations[-1][0]
+        gradient_maps = gradients[-1][0]
+        weights = gradient_maps.mean(dim=(1, 2), keepdim=True)
+        heatmap = torch.relu((weights * feature_maps).sum(dim=0))
+        heatmap_max = torch.max(heatmap)
+        if float(heatmap_max) <= 0:
+            return probabilities, prediction, confidence, None
+
+        heatmap = (heatmap / heatmap_max).cpu().numpy()
+        overlay_image = image.convert("RGB")
+        longest_side = max(overlay_image.size)
+        if longest_side > MAX_GRADCAM_DIMENSION:
+            ratio = MAX_GRADCAM_DIMENSION / longest_side
+            overlay_image = overlay_image.resize(
+                (max(1, round(overlay_image.width * ratio)), max(1, round(overlay_image.height * ratio))),
+                Image.Resampling.LANCZOS,
+            )
+        heatmap_image = Image.fromarray(np.uint8(heatmap * 255), mode="L").resize(overlay_image.size, Image.Resampling.BICUBIC)
+        heatmap_array = np.array(heatmap_image).astype(float) / 255.0
+
+        base = np.array(overlay_image).astype(float)
+        color = np.zeros_like(base)
+        color[:, :, 0] = 255
+        color[:, :, 1] = np.clip(heatmap_array * 220, 0, 220)
+        alpha = (0.15 + 0.45 * heatmap_array)[..., None]
+        overlay = np.uint8(np.clip(base * (1 - alpha) + color * alpha, 0, 255))
+
+        output = BytesIO()
+        Image.fromarray(overlay).save(output, format="PNG")
+        encoded = base64.b64encode(output.getvalue()).decode("ascii")
+        return probabilities, prediction, confidence, f"data:image/png;base64,{encoded}"
+    except Exception:
+        return probabilities, prediction, confidence, None
+    finally:
+        forward_handle.remove()
+        backward_handle.remove()
+        model.zero_grad(set_to_none=True)
+
+
 async def read_oct_upload(file: UploadFile) -> Image.Image:
     if file.content_type not in {"image/jpeg", "image/png"}:
         raise HTTPException(
@@ -961,7 +1042,7 @@ async def gradcam(file: UploadFile = File(...)):
             }
 
         image_tensor = preprocess(image).unsqueeze(0).to(device)
-        probabilities, prediction, confidence = predict_tensor(image_tensor)
+        probabilities, prediction, confidence, overlay = gradcam_prediction_and_overlay(image, image_tensor)
 
         if confidence < MIN_CONFIDENCE:
             return {
@@ -975,7 +1056,6 @@ async def gradcam(file: UploadFile = File(...)):
                 "disclaimer": LOW_CONFIDENCE_DISCLAIMER,
             }
 
-        overlay = gradcam_overlay_base64(image, image_tensor, CLASSES.index(prediction))
         return {
             "prediction": prediction,
             "confidence": confidence,

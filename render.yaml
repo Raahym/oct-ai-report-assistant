@@ -17,6 +17,22 @@ services:
       - key: EMAIL_FROM
         sync: false
   - type: web
+    name: afio-oct-gradcam-backend
+    runtime: python
+    rootDir: oct-ai-backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: ENABLE_GRADCAM
+        value: "true"
+      - key: MAX_GRADCAM_DIMENSION
+        value: "500"
+      - key: TORCH_NUM_THREADS
+        value: "1"
+  - type: web
     name: afio-corneal-ai-backend
     runtime: python
     rootDir: corneal-ai-backend
