@@ -2569,7 +2569,6 @@ export function ReportHistoryView() {
 }
 
 export function PatientReportCheckView() {
-  const store = useDemoStore();
   const [accessId, setAccessId] = useState("");
   const [password, setPassword] = useState("");
   const [publicResult, setPublicResult] = useState<PublicReportResult | null>(null);
@@ -2582,37 +2581,13 @@ export function PatientReportCheckView() {
   const [passwordChanging, setPasswordChanging] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState("");
   const [passwordError, setPasswordError] = useState("");
-  const normalizedAccessId = accessId.trim().toLowerCase();
-  const normalizedPassword = password.trim();
-  const match = useMemo(() => {
-    if (!normalizedAccessId || !normalizedPassword) return null;
-    const patient = store.data.patients.find((item) => getPatientAccessId(item).toLowerCase() === normalizedAccessId || item.patientCode.toLowerCase() === normalizedAccessId);
-    if (!patient || getPatientCurrentAccessPassword(patient) !== normalizedPassword) return null;
-    return store.data.reports.find((report) => report.patientId === patient.id && report.status === "approved") ??
-      store.data.reports.find((report) => report.patientId === patient.id) ??
-      null;
-  }, [normalizedPassword, normalizedAccessId, store.data.patients, store.data.reports]);
-  const patient = match ? store.data.patients.find((item) => item.id === match.patientId) : store.data.patients.find((item) => getPatientAccessId(item).toLowerCase() === normalizedAccessId || item.patientCode.toLowerCase() === normalizedAccessId);
-  const ai = match ? store.data.aiResults.find((item) => item.id === match.aiResultId) : null;
-  const localApprover = match ? store.data.profiles.find((item) => item.id === match.approvedBy) : undefined;
   const publicReport = publicResult?.report;
-  const localReportHistory = patient
-    ? store.data.reports
-        .filter((report) => report.patientId === patient.id && ["approved", "rejected", "superseded"].includes(report.status))
-        .sort((left, right) => new Date(right.approvedAt ?? right.createdAt).getTime() - new Date(left.approvedAt ?? left.createdAt).getTime())
-        .map((report) => {
-          const result = store.data.aiResults.find((item) => item.id === report.aiResultId);
-          const approver = store.data.profiles.find((item) => item.id === report.approvedBy);
-          return toPublicReport(report, patient, result, approver?.fullName);
-        })
-    : [];
-  const publicReportHistory = publicResult?.reports?.length ? publicResult.reports : localReportHistory;
+  const publicReportHistory = publicResult?.reports ?? [];
 
   const checkReport = async () => {
     setCheckError("");
     setPublicResult(null);
     if (!accessId.trim() || !password.trim()) return;
-    if (match) return;
 
     setChecking(true);
     try {
@@ -2632,8 +2607,8 @@ export function PatientReportCheckView() {
       setPasswordError("Enter CNIC/access ID, old password, and the new password twice.");
       return;
     }
-    if (passwordForm.newPassword.length < 6) {
-      setPasswordError("New password must be at least 6 characters.");
+    if (passwordForm.newPassword.length < 8) {
+      setPasswordError("New password must be at least 8 characters.");
       return;
     }
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
@@ -2681,7 +2656,7 @@ export function PatientReportCheckView() {
           <div className="mt-5 rounded-md border border-slate-200 bg-slate-50 p-4">
             <p className="font-bold text-slate-950">Access flow</p>
             <div className="mt-3 space-y-3 text-sm font-semibold text-slate-600">
-              <p>1. Clinic creates and reviews the OCT report.</p>
+              <p>1. Clinic creates and reviews the report.</p>
               <p>2. Patient receives their CNIC without dashes as the access ID, plus a password like Xisn12H.</p>
               <p>3. Approved reports can be viewed, downloaded, and printed.</p>
             </div>
@@ -2715,7 +2690,7 @@ export function PatientReportCheckView() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="font-bold text-slate-950">Past reports</p>
-                <p className="mt-1 text-sm font-semibold text-slate-500">View previous approved, rejected, or superseded reports.</p>
+                <p className="mt-1 text-sm font-semibold text-slate-500">View previous approved reports.</p>
               </div>
               <Button variant="secondary" onClick={() => setHistoryOpen((value) => !value)}>
                 {historyOpen ? "Hide reports" : "View all reports"}
@@ -2728,26 +2703,16 @@ export function PatientReportCheckView() {
             <p className="rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{checkError}</p>
           ) : !accessId || !password ? (
             <EmptyState title="Enter report details" body="The result will appear here after both fields are filled." />
-          ) : !match && !publicResult ? (
+          ) : !publicResult ? (
             <EmptyState title="Ready to check" body="Press Check Report to verify the access ID and password." />
-          ) : !match && publicResult && !publicResult.found ? (
+          ) : publicResult && !publicResult.found ? (
             <EmptyState title="No matching report" body={publicResult.message ?? "Check the report access ID and password, or contact the clinic."} />
-          ) : !match && publicResult && !publicResult.approved ? (
+          ) : publicResult && !publicResult.approved ? (
             <div>
               <div className="rounded-md border border-amber-200 bg-amber-50 p-5">
                 <h3 className="text-xl font-black text-amber-950">Report not made available yet</h3>
                 <p className="mt-2 text-sm font-semibold leading-6 text-amber-800">
                   This report is registered, but it cannot be viewed before doctor approval. Please check again after review is complete.
-                </p>
-              </div>
-              {historyOpen ? <PatientReportHistory reports={publicReportHistory} /> : null}
-            </div>
-          ) : match && match.status !== "approved" ? (
-            <div>
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-5">
-                <h3 className="text-xl font-black text-amber-950">Report not made available yet</h3>
-                <p className="mt-2 text-sm font-semibold leading-6 text-amber-800">
-                  This report is registered, but it cannot be viewed before doctor approval. Please check again after the clinic completes review.
                 </p>
               </div>
               {historyOpen ? <PatientReportHistory reports={publicReportHistory} /> : null}
@@ -2774,58 +2739,6 @@ export function PatientReportCheckView() {
                 <Download size={16} />
                 Download PDF
               </Button>
-              {historyOpen ? <PatientReportHistory reports={publicReportHistory} /> : null}
-            </div>
-          ) : match ? (
-            <div>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <StatusBadge status={match.status} />
-                  <h3 className="mt-3 text-xl font-black text-slate-950">Approved report found</h3>
-                  <p className="mt-1 text-sm text-slate-500">{patient ? getPatientAccessId(patient) : "-"} - {patient?.fullName}</p>
-                </div>
-                <Button
-                  className="w-full sm:w-auto"
-                  variant="secondary"
-                  onClick={() =>
-                    patient
-                      ? downloadPublicReportPdf({
-                          id: match.id,
-                          patientCode: getPatientAccessId(patient),
-                          patientName: patient.fullName,
-                          age: patient.age,
-                          gender: patient.gender,
-                          result: patientResult(match.finalDiagnosis, ai?.predictedClass),
-                          findings: patientSafeReportText(match.findings),
-                          impression: patientSafeReportText(match.impression),
-                          recommendation: patientSafeReportText(match.recommendation),
-                          doctorNotes: patientSafeReportText(match.doctorNotes),
-                          finalDiagnosis: patientResult(match.finalDiagnosis, ai?.predictedClass),
-                          approvedByName: doctorDisplayName(localApprover?.fullName),
-                          approvedAt: match.approvedAt,
-                          createdAt: match.createdAt,
-                          status: match.status
-                        })
-                      : undefined
-                  }
-                >
-                  <Download size={16} />
-                  Download PDF
-                </Button>
-              </div>
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <Info label="Results" value={patientResult(match.finalDiagnosis, ai?.predictedClass)} />
-                <Info label="Approved by" value={doctorDisplayName(localApprover?.fullName)} />
-                <Info label="Approved at" value={match.approvedAt ? new Date(match.approvedAt).toLocaleString() : "-"} />
-                <Info label="Access ID" value={patient ? getPatientAccessId(patient) : "-"} />
-              </div>
-              <div className="mt-5 space-y-4">
-                <ReportSection title="Findings" body={patientSafeReportText(match.findings)} />
-                <ReportSection title="Impression" body={patientSafeReportText(match.impression)} />
-                <ReportSection title="Recommendation" body={patientSafeReportText(match.recommendation)} />
-                <ReportSection title="Doctor Notes" body={patientSafeReportText(match.doctorNotes || "No additional notes.")} />
-                <ReportSection title="Final Diagnosis" body={patientResult(match.finalDiagnosis, ai?.predictedClass)} />
-              </div>
               {historyOpen ? <PatientReportHistory reports={publicReportHistory} /> : null}
             </div>
           ) : (
@@ -2867,7 +2780,7 @@ function PatientReportHistory({ reports }: { reports: PublicReport[] }) {
             </div>
           </div>
         ))}
-        {!reports.length ? <EmptyState title="No past reports" body="Approved, rejected, and superseded reports will appear here after the clinic reviews them." /> : null}
+        {!reports.length ? <EmptyState title="No past reports" body="Approved reports will appear here after the clinic reviews them." /> : null}
       </div>
     </div>
   );

@@ -74,7 +74,7 @@ function backendBaseUrl() {
 }
 
 export async function checkPublicReport(reportId: string, password: string): Promise<PublicReportResult> {
-  const response = await fetch(`${backendBaseUrl()}/reports/check`, {
+  const response = await fetch("/api/public/reports/check", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ access_id: reportId, password })
@@ -84,7 +84,7 @@ export async function checkPublicReport(reportId: string, password: string): Pro
     let detail = "Could not check report access.";
     try {
       const body = await response.json();
-      detail = body.detail ?? detail;
+      detail = body.message ?? body.detail ?? detail;
     } catch {
       // Keep default message.
     }
@@ -132,7 +132,7 @@ export async function changePatientAccessPassword(input: {
   oldPassword: string;
   newPassword: string;
 }) {
-  const response = await fetch(`${backendBaseUrl()}/reports/change-access-password`, {
+  const response = await fetch("/api/public/reports/change-access-password", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -146,7 +146,7 @@ export async function changePatientAccessPassword(input: {
     let detail = "Could not change patient password.";
     try {
       const body = await response.json();
-      detail = body.detail ?? detail;
+      detail = body.message ?? body.detail ?? detail;
     } catch {
       // Keep default message.
     }
