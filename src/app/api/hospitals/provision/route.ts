@@ -100,7 +100,12 @@ export async function POST(request: NextRequest) {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
-    return jsonError("Supabase server provisioning is not configured.", 500);
+    const missing = [
+      !supabaseUrl ? "NEXT_PUBLIC_SUPABASE_URL" : "",
+      !supabaseAnonKey ? "NEXT_PUBLIC_SUPABASE_ANON_KEY" : "",
+      !serviceRoleKey ? "SUPABASE_SERVICE_ROLE_KEY" : ""
+    ].filter(Boolean);
+    return jsonError(`Supabase server provisioning is not configured. Missing: ${missing.join(", ")}`, 500);
   }
 
   const authHeader = request.headers.get("authorization");

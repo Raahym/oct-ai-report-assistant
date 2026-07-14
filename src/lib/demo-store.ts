@@ -391,7 +391,8 @@ function normalizeProbabilities(prediction: ClinicalClass) {
 }
 
 function dataUrlToBlob(dataUrl: string) {
-  const [metadata, base64Data] = dataUrl.split(",");
+  const normalizedDataUrl = dataUrl.startsWith("data:") ? dataUrl : `data:image/png;base64,${dataUrl}`;
+  const [metadata, base64Data] = normalizedDataUrl.split(",");
   const mime = metadata.match(/^data:(.*?);base64$/)?.[1] ?? "image/png";
   const binary = atob(base64Data);
   const bytes = new Uint8Array(binary.length);
@@ -399,6 +400,12 @@ function dataUrlToBlob(dataUrl: string) {
     bytes[index] = binary.charCodeAt(index);
   }
   return new Blob([bytes], { type: mime });
+}
+
+function normalizeImageDataUrl(value?: string | null) {
+  if (!value) return undefined;
+  if (value.startsWith("data:image/") || value.startsWith("http://") || value.startsWith("https://")) return value;
+  return `data:image/png;base64,${value}`;
 }
 
 function octScansPublicPath(url?: string) {
@@ -728,11 +735,11 @@ export function useDemoStore() {
     const scans = ((scansResult.data ?? []) as DbScan[]).map(mapScan);
     const aiResults = ((aiResultsResult.data ?? []) as DbAiResult[]).map(mapAiResult);
     const reports = ((reportsResult.data ?? []) as DbReport[]).map(mapReport);
-    const scopedPatients = currentProfile.role === "afio_admin" ? patients : patients.filter((patient) => !patient.clinicId || patient.clinicId === currentProfile.clinicId);
+    const scopedPatients = currentProfile.role === "afio_admin" ? patients : patients.filter((patient) => patient.clinicId === currentProfile.clinicId);
     const scopedPatientIds = new Set(scopedPatients.map((patient) => patient.id));
-    const scopedScans = currentProfile.role === "afio_admin" ? scans : scans.filter((scan) => scopedPatientIds.has(scan.patientId) || scan.clinicId === currentProfile.clinicId);
+    const scopedScans = currentProfile.role === "afio_admin" ? scans : scans.filter((scan) => scopedPatientIds.has(scan.patientId) && scan.clinicId === currentProfile.clinicId);
     const scopedScanIds = new Set(scopedScans.map((scan) => scan.id));
-    const scopedReports = currentProfile.role === "afio_admin" ? reports : reports.filter((report) => scopedPatientIds.has(report.patientId) || report.clinicId === currentProfile.clinicId);
+    const scopedReports = currentProfile.role === "afio_admin" ? reports : reports.filter((report) => scopedPatientIds.has(report.patientId) && report.clinicId === currentProfile.clinicId);
 
     setData({
       currentUserId: user.id,
@@ -932,6 +939,10 @@ export function useDemoStore() {
     },
     async createPatient(input: Omit<Patient, "id" | "createdBy" | "createdAt" | "updatedAt">) {
       if (mode === "supabase" && supabase) {
+        if (currentUser.role !== "afio_admin" && !currentUser.clinicId) {
+          throw new Error("Your account is not assigned to a hospital. Ask AFIO admin to assign hospital access.");
+        }
+        const clinicId = currentUser.role === "afio_admin" ? input.clinicId ?? currentUser.clinicId ?? null : currentUser.clinicId;
         const { data: row, error } = await supabase
           .from("patients")
           .insert({
@@ -946,7 +957,7 @@ export function useDemoStore() {
             diabetes_history: input.diabetesHistory,
             previous_eye_disease: input.previousEyeDisease || null,
             clinical_notes: input.clinicalNotes || null,
-            clinic_id: currentUser.clinicId ?? null,
+            clinic_id: clinicId,
             department_id: input.departmentId ?? currentUser.defaultDepartmentId ?? null,
             module_id: input.moduleId ?? null,
             global_patient_key: input.globalPatientKey ?? input.cnic?.replace(/\D/g, "") ?? input.patientCode,
@@ -977,6 +988,11 @@ export function useDemoStore() {
     },
     async updatePatient(patientId: string, input: Omit<Patient, "id" | "createdBy" | "createdAt" | "updatedAt">) {
       if (mode === "supabase" && supabase) {
+        const existing = data.patients.find((patient) => patient.id === patientId);
+        if (currentUser.role !== "afio_admin" && (!currentUser.clinicId || existing?.clinicId !== currentUser.clinicId)) {
+          throw new Error("You can only update patients from your hospital.");
+        }
+        const clinicId = currentUser.role === "afio_admin" ? input.clinicId ?? existing?.clinicId ?? currentUser.clinicId ?? null : currentUser.clinicId;
         const { data: row, error } = await supabase
           .from("patients")
           .update({
@@ -991,7 +1007,7 @@ export function useDemoStore() {
             diabetes_history: input.diabetesHistory,
             previous_eye_disease: input.previousEyeDisease || null,
             clinical_notes: input.clinicalNotes || null,
-            clinic_id: input.clinicId ?? currentUser.clinicId ?? null,
+            clinic_id: clinicId,
             department_id: input.departmentId ?? currentUser.defaultDepartmentId ?? null,
             module_id: input.moduleId ?? null,
             global_patient_key: input.globalPatientKey ?? input.cnic?.replace(/\D/g, "") ?? input.patientCode,
@@ -1053,8 +1069,13 @@ export function useDemoStore() {
       const moduleId: ModuleId = input.moduleId ?? "oct";
       const scanType = moduleId === "vkg" ? "VKG" : "OCT";
       if (mode === "supabase" && supabase && input.file) {
+        if (!patient) throw new Error("Patient not found.");
+        if (currentUser.role !== "afio_admin" && (!currentUser.clinicId || patient.clinicId !== currentUser.clinicId)) {
+          throw new Error("You can only upload scans for patients from your hospital.");
+        }
+        const clinicId = patient.clinicId ?? currentUser.clinicId;
         const extension = input.file.name.split(".").pop()?.toLowerCase() || "jpg";
-        const storagePath = `${scanStoragePrefix(patient?.clinicId ?? currentUser.clinicId, moduleId, input.patientId)}/${crypto.randomUUID()}.${extension}`;
+        const storagePath = `${scanStoragePrefix(clinicId, moduleId, input.patientId)}/${crypto.randomUUID()}.${extension}`;
         const upload = await supabase.storage.from("oct-scans").upload(storagePath, input.file, {
           contentType: input.file.type,
           upsert: false
@@ -1069,7 +1090,7 @@ export function useDemoStore() {
             image_url: publicUrl.publicUrl,
             storage_path: storagePath,
             scan_type: scanType,
-            clinic_id: patient?.clinicId ?? currentUser.clinicId ?? null,
+            clinic_id: clinicId ?? null,
             department_id: patient?.departmentId ?? currentUser.defaultDepartmentId ?? null,
             module_id: moduleId,
             eye_side: input.eyeSide,
@@ -1321,7 +1342,7 @@ export function useDemoStore() {
         probabilities,
         modelName: prediction.model_name,
         modelVersion: prediction.model_version,
-        heatmapUrl: prediction.gradcam_overlay_base64 ?? undefined,
+        heatmapUrl: normalizeImageDataUrl(prediction.gradcam_overlay_base64),
         moduleId: scan.moduleId ?? "oct",
         isDummyResult: false,
         createdAt: now()

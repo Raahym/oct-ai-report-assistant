@@ -151,6 +151,11 @@ export async function predictRetina(file: File, options: RetinaPredictionOptions
   }
   const combinedRetinaUrl = process.env.NEXT_PUBLIC_RETINA_BACKEND_URL?.replace(/\/$/, "");
   const retinaDrUrl = (process.env.NEXT_PUBLIC_RETINA_DR_BACKEND_URL || combinedRetinaUrl)?.replace(/\/$/, "");
+  const retinaDrGradcamUrl = (
+    process.env.NEXT_PUBLIC_RETINA_DR_GRADCAM_BACKEND_URL ||
+    process.env.NEXT_PUBLIC_RETINA_GRADCAM_BACKEND_URL ||
+    ""
+  ).replace(/\/$/, "");
   const retinaGlaucomaUrl = (process.env.NEXT_PUBLIC_RETINA_GLAUCOMA_BACKEND_URL || combinedRetinaUrl)?.replace(/\/$/, "");
   const retinaHrUrl = (process.env.NEXT_PUBLIC_RETINA_HR_BACKEND_URL || combinedRetinaUrl)?.replace(/\/$/, "");
   if (services.dr && !retinaDrUrl) {
@@ -162,7 +167,10 @@ export async function predictRetina(file: File, options: RetinaPredictionOptions
         throw new Error(`Retina DR endpoint failed: ${error instanceof Error ? error.message : "unknown error"}`);
       })
     : undefined;
-  const [glaucomaResult, hypertensiveRetinopathyResult] = await Promise.allSettled([
+  const [drGradcamResult, glaucomaResult, hypertensiveRetinopathyResult] = await Promise.allSettled([
+    services.dr && retinaDrGradcamUrl
+      ? postImageEndpoint(file, `${retinaDrGradcamUrl}/gradcam`, "Retina DR Grad-CAM endpoint is missing.", "image")
+      : Promise.reject(new Error(services.dr ? "NEXT_PUBLIC_RETINA_DR_GRADCAM_BACKEND_URL is missing." : "DR not selected.")),
     services.glaucoma && retinaGlaucomaUrl
       ? postImageEndpoint(file, `${retinaGlaucomaUrl}/predict-glaucoma`, "Retina glaucoma endpoint is missing.", "image")
       : Promise.reject(new Error(services.glaucoma ? "NEXT_PUBLIC_RETINA_GLAUCOMA_BACKEND_URL is missing." : "Glaucoma not selected.")),
@@ -171,14 +179,22 @@ export async function predictRetina(file: File, options: RetinaPredictionOptions
       : Promise.reject(new Error(services.hr ? "NEXT_PUBLIC_RETINA_HR_BACKEND_URL is missing." : "Hypertensive retinopathy not selected.")),
   ]);
   const optionalWarnings = [
+    services.dr && drGradcamResult.status === "rejected" ? `DR Grad-CAM endpoint unavailable: ${drGradcamResult.reason instanceof Error ? drGradcamResult.reason.message : "unknown error"}` : "",
     services.glaucoma && glaucomaResult.status === "rejected" ? `Glaucoma endpoint unavailable: ${glaucomaResult.reason instanceof Error ? glaucomaResult.reason.message : "unknown error"}` : "",
     services.hr && hypertensiveRetinopathyResult.status === "rejected" ? `Hypertensive-retinopathy endpoint unavailable: ${hypertensiveRetinopathyResult.reason instanceof Error ? hypertensiveRetinopathyResult.reason.message : "unknown error"}` : "",
     ...(options.imageQualityWarnings ?? []),
   ].filter(Boolean);
   const glaucoma = services.glaucoma && glaucomaResult.status === "fulfilled" ? glaucomaResult.value as RetinaGlaucomaPrediction : undefined;
   const hypertensiveRetinopathy = services.hr && hypertensiveRetinopathyResult.status === "fulfilled" ? hypertensiveRetinopathyResult.value as RetinaHrPrediction : undefined;
+  const drWithHeatmap = dr && drGradcamResult.status === "fulfilled"
+    ? {
+        ...dr,
+        heatmap: (dr as { heatmap?: string | null }).heatmap ?? (drGradcamResult.value as { heatmap?: string | null; gradcam_overlay_base64?: string | null }).heatmap,
+        gradcam_overlay_base64: dr.gradcam_overlay_base64 ?? (drGradcamResult.value as { heatmap?: string | null; gradcam_overlay_base64?: string | null }).gradcam_overlay_base64
+      }
+    : dr;
 
-  return normalizeRetinaPrediction(dr, glaucoma, hypertensiveRetinopathy, optionalWarnings, services);
+  return normalizeRetinaPrediction(drWithHeatmap, glaucoma, hypertensiveRetinopathy, optionalWarnings, services);
 }
 
 type RetinaGlaucomaPrediction = {

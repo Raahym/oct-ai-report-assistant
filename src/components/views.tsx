@@ -91,6 +91,12 @@ function formatMaybePercent(value: number | string | undefined) {
   return `${Math.round(value * 100)}%`;
 }
 
+function imageDisplaySource(value?: string) {
+  if (!value) return "";
+  if (value.startsWith("data:image/") || value.startsWith("http://") || value.startsWith("https://")) return value;
+  return `data:image/png;base64,${value}`;
+}
+
 function RetinaServiceSelector({
   value,
   onChange,
@@ -397,10 +403,19 @@ function doctorDisplayName(name?: string) {
 
 function patientSafeReportText(value: string) {
   return value
+    .replace(/AI model output/gi, "Clinical result")
+    .replace(/AI model/gi, "screening system")
+    .replace(/AI-screening features/gi, "screening features")
+    .replace(/AI classification/gi, "screening result")
     .replace(/AI-assisted classification suggests/gi, "Doctor-reviewed results show")
     .replace(/based on AI-assisted analysis/gi, "after doctor review")
+    .replace(/AI-assisted fundus screening suggests/gi, "Doctor-reviewed fundus screening shows")
+    .replace(/AI-assisted VKG screening suggests/gi, "Doctor-reviewed VKG screening shows")
     .replace(/AI-assisted/g, "Doctor-reviewed")
-    .replace(/\bAI\b/g, "doctor-reviewed analysis");
+    .replace(/\bAI\b/g, "clinical")
+    .replace(/\bConfidence:\s*\d+%/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function patientResult(result?: string, fallback?: string) {
@@ -2131,10 +2146,10 @@ export function AnalysisView({ id }: { id: string }) {
                   </div>
                 </>
               )}
-              {aiResult.heatmapUrl && scan.moduleId !== "retina" ? (
+              {aiResult.heatmapUrl ? (
                 <div className="rounded-md border border-slate-200 bg-white p-3">
                   <p className="text-sm font-black text-slate-950">Grad-CAM attention heatmap</p>
-                  <img src={aiResult.heatmapUrl} alt="Grad-CAM heatmap overlay" className="mt-3 aspect-[4/3] w-full rounded-md bg-slate-900 object-cover" />
+                  <img src={imageDisplaySource(aiResult.heatmapUrl)} alt="Grad-CAM heatmap overlay" className="mt-3 aspect-[4/3] w-full rounded-md bg-slate-900 object-cover" />
                   <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500">
                     Highlighted regions influenced the AI classification. This is not a segmentation map or measurement.
                   </p>
@@ -2375,6 +2390,8 @@ export function ReportView({ id }: { id: string }) {
   const scan = store.data.scans.find((item) => item.id === report.scanId);
   const ai = store.data.aiResults.find((item) => item.id === report.aiResultId);
   const reportModuleId = report.moduleId ?? scan?.moduleId ?? ai?.moduleId ?? "oct";
+  const reportModuleLabel = getModuleLabel(reportModuleId);
+  const isApprovedReport = report.status === "approved";
   const approver = store.data.profiles.find((item) => item.id === report.approvedBy);
   const canDoctorEdit = store.currentUser.role === "doctor";
   const canManageScan = store.currentUser.role === "doctor" || store.currentUser.role === "hospital_admin" || store.currentUser.role === "admin";
@@ -2461,7 +2478,13 @@ export function ReportView({ id }: { id: string }) {
         <div className="flex flex-col gap-3 border-b border-slate-100 pb-5 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h3 className="text-xl font-black text-slate-950">
-              {report.status === "approved" ? "Doctor-Approved OCT Report" : report.status === "rejected" ? "Rejected OCT Report" : report.status === "superseded" ? "Superseded OCT Report" : "OCT Report"}
+              {report.status === "approved"
+                ? `Doctor-Approved ${reportModuleLabel} Report`
+                : report.status === "rejected"
+                  ? `Rejected ${reportModuleLabel} Report`
+                  : report.status === "superseded"
+                    ? `Superseded ${reportModuleLabel} Report`
+                    : `${reportModuleLabel} Report`}
             </h3>
             <p className="mt-1 text-sm text-slate-500">Final status depends on doctor approval.</p>
           </div>
@@ -2486,17 +2509,21 @@ export function ReportView({ id }: { id: string }) {
               {patient ? <Info label="Patient access ID" value={getPatientAccessId(patient)} /> : null}
               {patient ? <Info label="Access password" value={getPatientCurrentAccessPassword(patient)} /> : null}
               {patient ? <Info label="Patient" value={`${patient.patientCode} - ${patient.fullName}`} /> : null}
-              {ai ? <Info label="AI prediction" value={`${ai.predictedClass} (${Math.round(ai.confidence * 100)}%)`} /> : null}
+              {isApprovedReport ? (
+                <Info label="Clinical result" value={report.finalDiagnosis} />
+              ) : ai ? (
+                <Info label="AI prediction" value={`${ai.predictedClass} (${Math.round(ai.confidence * 100)}%)`} />
+              ) : null}
               <Info label="Approved by" value={approver?.fullName ?? "Not approved"} />
               <Info label="Approved at" value={report.approvedAt ? new Date(report.approvedAt).toLocaleString() : "Not approved"} />
             </div>
           </div>
           <div className="space-y-5">
-            <SafetyNotice />
-            <ReportSection title="Findings" body={report.findings} />
-            <ReportSection title="Impression" body={report.impression} />
-            <ReportSection title="Recommendation" body={report.recommendation} />
-            <ReportSection title="Doctor Notes" body={report.doctorNotes || "No additional notes."} />
+            {isApprovedReport ? null : <SafetyNotice />}
+            <ReportSection title="Findings" body={isApprovedReport ? patientSafeReportText(report.findings) : report.findings} />
+            <ReportSection title="Impression" body={isApprovedReport ? patientSafeReportText(report.impression) : report.impression} />
+            <ReportSection title="Recommendation" body={isApprovedReport ? patientSafeReportText(report.recommendation) : report.recommendation} />
+            <ReportSection title="Doctor Notes" body={isApprovedReport ? patientSafeReportText(report.doctorNotes || "No additional notes.") : report.doctorNotes || "No additional notes."} />
             <ReportSection title="Final Diagnosis" body={report.finalDiagnosis} />
             {canDoctorEdit ? (
               <div className="grid gap-2 border-t border-slate-100 pt-5 sm:flex sm:flex-wrap sm:justify-end">

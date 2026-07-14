@@ -7,6 +7,9 @@ export const safetyDisclaimer =
 export const finalReportDisclaimer =
   "This report was generated with AI assistance and reviewed by a qualified clinician. The AI output is not a standalone diagnosis.";
 
+export const approvedReportDisclaimer =
+  "This report was reviewed by a qualified clinician and should be interpreted with the full clinical context.";
+
 export type ReportTemplate = {
   findings: string;
   impression: string;
