@@ -249,6 +249,14 @@ type ProvisionHospitalResponse = {
   emailMessage?: string;
 };
 
+type UpdateHospitalResponse = {
+  hospital: DbHospital;
+  profile?: DbProfile | null;
+  temporaryPassword: string;
+  emailSent: boolean;
+  emailMessage?: string;
+};
+
 type DbPatient = {
   id: string;
   patient_code: string;
@@ -498,6 +506,33 @@ async function provisionHospital(input: {
     throw new Error(payload.error ?? "Could not provision hospital.");
   }
   return payload as ProvisionHospitalResponse;
+}
+
+async function updateProvisionedHospital(hospitalId: string, input: {
+  name: string;
+  code: string;
+  adminEmail?: string;
+  adminPassword?: string;
+}) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) throw new Error("Your Business Admin session expired. Sign in again.");
+
+  const response = await fetch(`/api/hospitals/${hospitalId}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Could not update hospital.");
+  }
+  return payload as UpdateHospitalResponse;
 }
 
 function mapPatient(row: DbPatient): Patient {
@@ -1641,7 +1676,7 @@ export function useDemoStore() {
       commit(audit({ ...data, hospitals: [hospital, ...data.hospitals] }, "Hospital created", "hospital", hospital.id, hospital.name));
       return { hospital, temporaryPassword: input.adminPassword ?? "", emailSent: false };
     },
-    async updateHospitalDetails(hospitalId: string, input: { name: string; code: string; adminEmail?: string }) {
+    async updateHospitalDetails(hospitalId: string, input: { name: string; code: string; adminEmail?: string; adminPassword?: string }) {
       if (currentUser.role !== "afio_admin") {
         throw new Error("Only Business Admin can edit hospital details.");
       }
@@ -1649,32 +1684,31 @@ export function useDemoStore() {
       if (!input.name.trim() || !code) throw new Error("Hospital name and code are required.");
 
       if (mode === "supabase" && supabase) {
-        const { data: row, error } = await supabase
-          .from("clinics")
-          .update({
-            name: input.name.trim(),
-            code,
-            admin_email: input.adminEmail || null
-          })
-          .eq("id", hospitalId)
-          .select("*, clinic_modules(module_id,is_enabled)")
-          .single();
-        if (error) throw new Error(error.message);
-        const { error: profileClinicNameError } = await supabase
-          .from("profiles")
-          .update({ clinic_name: input.name.trim() })
-          .eq("clinic_id", hospitalId);
-        if (profileClinicNameError) throw new Error(profileClinicNameError.message);
-        const saved = mapHospital(row as DbHospital);
+        const result = await updateProvisionedHospital(hospitalId, {
+          name: input.name.trim(),
+          code,
+          adminEmail: input.adminEmail,
+          adminPassword: input.adminPassword
+        });
+        const saved = mapHospital(result.hospital);
+        const adminProfile = result.profile ? mapProfile(result.profile) : null;
         setData((current) => ({
           ...current,
           hospitals: current.hospitals.map((hospital) => (hospital.id === hospitalId ? saved : hospital)),
-          profiles: current.profiles.map((profile) =>
-            profile.clinicId === hospitalId ? { ...profile, clinicName: saved.name } : profile
-          )
+          profiles: adminProfile
+            ? [adminProfile, ...current.profiles.filter((profile) => profile.id !== adminProfile.id).map((profile) =>
+                profile.clinicId === hospitalId ? { ...profile, clinicName: saved.name } : profile
+              )]
+            : current.profiles.map((profile) => profile.clinicId === hospitalId ? { ...profile, clinicName: saved.name } : profile)
         }));
         await insertAudit(actorId, "Hospital details updated", "hospital", hospitalId, saved.name);
-        return;
+        return {
+          hospital: saved,
+          adminProfile,
+          temporaryPassword: result.temporaryPassword,
+          emailSent: result.emailSent,
+          emailMessage: result.emailMessage
+        };
       }
 
       const hospitals = data.hospitals.map((hospital) =>
@@ -1688,6 +1722,7 @@ export function useDemoStore() {
           : hospital
       );
       commit(audit({ ...data, hospitals }, "Hospital details updated", "hospital", hospitalId, input.name.trim()));
+      return { hospital: hospitals.find((hospital) => hospital.id === hospitalId), temporaryPassword: input.adminPassword ?? "", emailSent: false };
     },
     async deleteHospital(hospitalId: string) {
       if (currentUser.role !== "afio_admin") {

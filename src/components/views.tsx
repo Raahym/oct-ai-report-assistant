@@ -1267,7 +1267,7 @@ export function AfioBusinessAdminView() {
     emailSent: boolean;
     emailMessage?: string;
   } | null>(null);
-  const [hospitalDrafts, setHospitalDrafts] = useState<Record<string, { name: string; code: string; adminEmail: string }>>({});
+  const [hospitalDrafts, setHospitalDrafts] = useState<Record<string, { name: string; code: string; adminEmail: string; adminPassword: string }>>({});
   const allModuleIds: ModuleId[] = ["oct", "vkg", "corneal", "retina"];
   const moduleNames: Record<ModuleId, string> = {
     oct: "OCT",
@@ -1280,7 +1280,7 @@ export function AfioBusinessAdminView() {
     setHospitalDrafts((current) => {
       const next = { ...current };
       store.data.hospitals.forEach((hospital) => {
-        next[hospital.id] ??= { name: hospital.name, code: hospital.code, adminEmail: hospital.adminEmail ?? "" };
+        next[hospital.id] ??= { name: hospital.name, code: hospital.code, adminEmail: hospital.adminEmail ?? "", adminPassword: "" };
       });
       return next;
     });
@@ -1326,7 +1326,20 @@ export function AfioBusinessAdminView() {
     setError("");
     setSavingHospitalId(hospitalId);
     try {
-      await store.updateHospitalDetails(hospitalId, draft);
+      const result = await store.updateHospitalDetails(hospitalId, draft);
+      if (result?.temporaryPassword) {
+        setProvisionedAdmin({
+          hospitalName: result.hospital?.name ?? draft.name,
+          adminEmail: result.hospital?.adminEmail ?? draft.adminEmail,
+          temporaryPassword: result.temporaryPassword,
+          emailSent: result.emailSent,
+          emailMessage: result.emailMessage
+        });
+      }
+      setHospitalDrafts((current) => ({
+        ...current,
+        [hospitalId]: { ...draft, adminPassword: "" }
+      }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not update hospital details.");
     } finally {
@@ -1473,21 +1486,27 @@ export function AfioBusinessAdminView() {
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black uppercase text-slate-500">{hospital.subscriptionStatus}</span>
                 </div>
                 <p className="mt-2 text-sm text-slate-500">Code: {hospital.code} · Admin: {hospital.adminEmail ?? "Not assigned"}</p>
-                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="mt-4 grid gap-3 md:grid-cols-4">
                   <Field
                     label="Hospital name"
                     value={hospitalDrafts[hospital.id]?.name ?? hospital.name}
-                    onChange={(value) => setHospitalDrafts((current) => ({ ...current, [hospital.id]: { ...(current[hospital.id] ?? { code: hospital.code, adminEmail: hospital.adminEmail ?? "" }), name: value } }))}
+                    onChange={(value) => setHospitalDrafts((current) => ({ ...current, [hospital.id]: { ...(current[hospital.id] ?? { code: hospital.code, adminEmail: hospital.adminEmail ?? "", adminPassword: "" }), name: value } }))}
                   />
                   <Field
                     label="Code"
                     value={hospitalDrafts[hospital.id]?.code ?? hospital.code}
-                    onChange={(value) => setHospitalDrafts((current) => ({ ...current, [hospital.id]: { ...(current[hospital.id] ?? { name: hospital.name, adminEmail: hospital.adminEmail ?? "" }), code: value } }))}
+                    onChange={(value) => setHospitalDrafts((current) => ({ ...current, [hospital.id]: { ...(current[hospital.id] ?? { name: hospital.name, adminEmail: hospital.adminEmail ?? "", adminPassword: "" }), code: value } }))}
                   />
                   <Field
                     label="Admin email"
                     value={hospitalDrafts[hospital.id]?.adminEmail ?? hospital.adminEmail ?? ""}
-                    onChange={(value) => setHospitalDrafts((current) => ({ ...current, [hospital.id]: { ...(current[hospital.id] ?? { name: hospital.name, code: hospital.code }), adminEmail: value } }))}
+                    onChange={(value) => setHospitalDrafts((current) => ({ ...current, [hospital.id]: { ...(current[hospital.id] ?? { name: hospital.name, code: hospital.code, adminPassword: "" }), adminEmail: value } }))}
+                  />
+                  <Field
+                    label="New temp password optional"
+                    value={hospitalDrafts[hospital.id]?.adminPassword ?? ""}
+                    placeholder="Auto if email changed"
+                    onChange={(value) => setHospitalDrafts((current) => ({ ...current, [hospital.id]: { ...(current[hospital.id] ?? { name: hospital.name, code: hospital.code, adminEmail: hospital.adminEmail ?? "" }), adminPassword: value } }))}
                   />
                 </div>
               </div>
