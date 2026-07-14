@@ -693,6 +693,13 @@ export function useDemoStore() {
 
   const currentProfileExists = data.profiles.some((profile) => profile.id === currentUser.id);
   const actorId = mode === "supabase" && currentProfileExists ? currentUser.id : null;
+  const canUseModule = (moduleId?: ModuleId | null) =>
+    currentUser.role === "afio_admin" || !moduleId || visibleModuleIdsForUser(data, currentUser).includes(moduleId);
+  const assertModuleAccess = (moduleId?: ModuleId | null) => {
+    if (!canUseModule(moduleId)) {
+      throw new Error("This hospital does not have access to that service.");
+    }
+  };
 
   const commit = (next: AppData) => {
     setData(next);
@@ -947,6 +954,7 @@ export function useDemoStore() {
         if (currentUser.role !== "afio_admin" && !currentUser.clinicId) {
           throw new Error("Your account is not assigned to a hospital. Ask AFIO admin to assign hospital access.");
         }
+        assertModuleAccess(input.moduleId ?? "oct");
         const clinicId = currentUser.role === "afio_admin" ? input.clinicId ?? currentUser.clinicId ?? null : currentUser.clinicId;
         const { data: row, error } = await supabase
           .from("patients")
@@ -997,6 +1005,7 @@ export function useDemoStore() {
         if (currentUser.role !== "afio_admin" && (!currentUser.clinicId || existing?.clinicId !== currentUser.clinicId)) {
           throw new Error("You can only update patients from your hospital.");
         }
+        assertModuleAccess(input.moduleId ?? existing?.moduleId ?? "oct");
         const clinicId = currentUser.role === "afio_admin" ? input.clinicId ?? existing?.clinicId ?? currentUser.clinicId ?? null : currentUser.clinicId;
         const { data: row, error } = await supabase
           .from("patients")
@@ -1074,6 +1083,7 @@ export function useDemoStore() {
       const moduleId: ModuleId = input.moduleId ?? "oct";
       const scanType = moduleId === "vkg" ? "VKG" : "OCT";
       if (mode === "supabase" && supabase && input.file) {
+        assertModuleAccess(moduleId);
         if (!patient) throw new Error("Patient not found.");
         if (currentUser.role !== "afio_admin" && (!currentUser.clinicId || patient.clinicId !== currentUser.clinicId)) {
           throw new Error("You can only upload scans for patients from your hospital.");
@@ -1367,6 +1377,7 @@ export function useDemoStore() {
       if (existing) return existing;
 
       if (mode === "supabase" && supabase) {
+        assertModuleAccess(scan.moduleId ?? aiResult.moduleId ?? "oct");
         const template = (await getReportTemplates(scan.moduleId ?? aiResult.moduleId ?? "oct"))[aiResult.predictedClass];
         const { data: row, error } = await supabase
           .from("reports")

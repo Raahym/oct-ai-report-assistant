@@ -2883,7 +2883,13 @@ export function FeedbackReviewView({ scope = "admin" }: { scope?: "admin" | "hod
   const [responseMessage, setResponseMessage] = useState("");
   const [loading, setLoading] = useState(cachedEntries.length === 0);
   const canReview = store.currentUser.role === "hospital_admin" || store.currentUser.role === "admin" || store.currentUser.role === "afio_admin";
-  const visible = entries.filter((entry) => {
+  const visibleModuleIds = new Set(store.visibleModuleIds);
+  const scopedEntries = entries.filter((entry) => {
+    if (store.currentUser.role === "afio_admin") return true;
+    if (entry.clinicId !== store.currentUser.clinicId) return false;
+    return !entry.moduleId || visibleModuleIds.has(entry.moduleId);
+  });
+  const visible = scopedEntries.filter((entry) => {
     if (tab === "messages" && !(entry.responses?.length)) return false;
     return filter === "all" || entry.status === filter;
   });
@@ -2955,15 +2961,15 @@ export function FeedbackReviewView({ scope = "admin" }: { scope?: "admin" | "hod
       <div className="mb-5 grid gap-3 lg:grid-cols-3">
         <Card className="p-5">
           <p className="text-sm font-semibold text-slate-500">New feedback</p>
-          <p className="mt-2 text-3xl font-black text-slate-950">{entries.filter((entry) => entry.status === "new").length}</p>
+          <p className="mt-2 text-3xl font-black text-slate-950">{scopedEntries.filter((entry) => entry.status === "new").length}</p>
         </Card>
         <Card className="p-5">
           <p className="text-sm font-semibold text-slate-500">Messages sent</p>
-          <p className="mt-2 text-3xl font-black text-slate-950">{entries.reduce((total, entry) => total + (entry.responses?.length ?? 0), 0)}</p>
+          <p className="mt-2 text-3xl font-black text-slate-950">{scopedEntries.reduce((total, entry) => total + (entry.responses?.length ?? 0), 0)}</p>
         </Card>
         <Card className="p-5">
           <p className="text-sm font-semibold text-slate-500">Resolved</p>
-          <p className="mt-2 text-3xl font-black text-slate-950">{entries.filter((entry) => entry.status === "resolved").length}</p>
+          <p className="mt-2 text-3xl font-black text-slate-950">{scopedEntries.filter((entry) => entry.status === "resolved").length}</p>
         </Card>
       </div>
       <Card className="p-5">
@@ -3010,7 +3016,9 @@ export function FeedbackReviewView({ scope = "admin" }: { scope?: "admin" | "hod
               <StatusBadge status={entry.status === "new" ? "pending" : entry.status === "reviewing" ? "pending_review" : "approved"} />
             </div>
             <p className="mt-4 rounded-md bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-700">{entry.message}</p>
-            <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <div className="mt-4 grid gap-3 md:grid-cols-5">
+              <Info label="Service" value={entry.moduleId ? getModuleLabel(entry.moduleId) : "General"} />
+              <Info label="Hospital" value={entry.hospitalName || store.data.hospitals.find((hospital) => hospital.id === entry.clinicId)?.name || "-"} />
               <Info label="Email" value={entry.email || "-"} />
               <Info label="Phone" value={entry.phone || "-"} />
               <Info label="Patient ID" value={entry.patientCode || "-"} />
