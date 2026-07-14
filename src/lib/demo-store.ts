@@ -1628,6 +1628,42 @@ export function useDemoStore() {
       }));
       await insertAudit(actorId, "User access updated", "profile", saved.id, `${saved.role} / ${saved.isActive ? "approved" : "suspended"}`);
     },
+    async deleteProfileAccess(profileId: string) {
+      if (currentUser.role !== "afio_admin" && currentUser.role !== "hospital_admin" && currentUser.role !== "admin") {
+        throw new Error("Only admins can remove users.");
+      }
+      const target = data.profiles.find((profile) => profile.id === profileId);
+      if (!target) throw new Error("User not found.");
+      if (target.role === "afio_admin") throw new Error("Business Admin owner cannot be removed.");
+      if (target.id === currentUser.id) throw new Error("You cannot remove your own account while signed in.");
+      if (currentUser.role !== "afio_admin" && target.clinicId !== currentUser.clinicId) {
+        throw new Error("Hospital admins can only remove users from their hospital.");
+      }
+
+      if (mode === "supabase" && supabase) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) throw new Error("Your admin session expired. Sign in again.");
+
+        const response = await fetch(`/api/profiles/${profileId}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error ?? "Could not remove user.");
+
+        setData((current) => ({
+          ...current,
+          profiles: current.profiles.filter((profile) => profile.id !== profileId)
+        }));
+        return;
+      }
+
+      commit(audit({
+        ...data,
+        profiles: data.profiles.filter((profile) => profile.id !== profileId)
+      }, "User removed", "profile", profileId, target.email));
+    },
     async createHospital(input: { name: string; code: string; adminEmail?: string; adminPassword?: string; subscriptionStatus: Hospital["subscriptionStatus"]; enabledModules: ModuleId[] }) {
       if (currentUser.role !== "afio_admin") {
         throw new Error("Only Business Admin can add hospitals.");

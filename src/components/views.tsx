@@ -3014,6 +3014,20 @@ export function AdminUsersView() {
     }
   };
 
+  const removeAccess = async (profileId: string, profileName: string, mode: "reject" | "delete") => {
+    const action = mode === "reject" ? "Reject" : "Delete";
+    if (!window.confirm(`${action} ${profileName}? This removes their login and access record.`)) return;
+    setError("");
+    setSavingId(profileId);
+    try {
+      await store.deleteProfileAccess(profileId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Could not ${mode} user.`);
+    } finally {
+      setSavingId("");
+    }
+  };
+
   return (
     <>
       <PageTitle title="User Access" subtitle="Approve hospital staff and assign clinical roles. Business Admin sees all hospitals; hospital admins see only their own staff." />
@@ -3049,18 +3063,28 @@ export function AdminUsersView() {
               {profile.role === "afio_admin" ? (
                 <span className="rounded-md bg-slate-100 px-3 py-2 text-center text-xs font-bold uppercase text-slate-500">Owner</span>
               ) : profile.isActive ? (
-                <Button
-                  className="w-full"
-                  variant="secondary"
-                  disabled={savingId === profile.id}
-                  onClick={() => updateAccess(profile.id, { isActive: false })}
-                >
-                  Suspend Access
-                </Button>
+                <div className="grid gap-2">
+                  <Button
+                    className="w-full"
+                    variant="secondary"
+                    disabled={savingId === profile.id}
+                    onClick={() => updateAccess(profile.id, { isActive: false })}
+                  >
+                    Suspend Access
+                  </Button>
+                  <Button className="w-full" variant="danger" disabled={savingId === profile.id} onClick={() => removeAccess(profile.id, profile.fullName, "delete")}>
+                    Delete User
+                  </Button>
+                </div>
               ) : (
-                <Button className="w-full" disabled={savingId === profile.id} onClick={() => updateAccess(profile.id, { isActive: true })}>
-                  Approve Access
-                </Button>
+                <div className="grid gap-2">
+                  <Button className="w-full" disabled={savingId === profile.id} onClick={() => updateAccess(profile.id, { isActive: true })}>
+                    Approve Access
+                  </Button>
+                  <Button className="w-full" variant="danger" disabled={savingId === profile.id} onClick={() => removeAccess(profile.id, profile.fullName, "reject")}>
+                    Reject Request
+                  </Button>
+                </div>
               )}
             </div>
           </Card>
@@ -3108,17 +3132,27 @@ export function AdminUsersView() {
                   {profile.role === "afio_admin" ? (
                     <span className="text-xs font-bold uppercase text-slate-400">Owner</span>
                   ) : profile.isActive ? (
-                    <Button
-                      variant="secondary"
-                      disabled={savingId === profile.id}
-                      onClick={() => updateAccess(profile.id, { isActive: false })}
-                    >
-                      Suspend
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="secondary"
+                        disabled={savingId === profile.id}
+                        onClick={() => updateAccess(profile.id, { isActive: false })}
+                      >
+                        Suspend
+                      </Button>
+                      <Button variant="danger" disabled={savingId === profile.id} onClick={() => removeAccess(profile.id, profile.fullName, "delete")}>
+                        Delete
+                      </Button>
+                    </div>
                   ) : (
-                    <Button disabled={savingId === profile.id} onClick={() => updateAccess(profile.id, { isActive: true })}>
-                      Approve
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button disabled={savingId === profile.id} onClick={() => updateAccess(profile.id, { isActive: true })}>
+                        Approve
+                      </Button>
+                      <Button variant="danger" disabled={savingId === profile.id} onClick={() => removeAccess(profile.id, profile.fullName, "reject")}>
+                        Reject
+                      </Button>
+                    </div>
                   )}
                 </td>
               </tr>
