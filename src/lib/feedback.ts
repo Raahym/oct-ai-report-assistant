@@ -110,7 +110,7 @@ export function getCachedFeedbackEntries() {
 
 export async function submitFeedback(input: Omit<FeedbackEntry, "id" | "status" | "createdAt">) {
   try {
-    const response = await fetch(`${backendBaseUrl()}/feedback`, {
+    const response = await fetch("/api/public/feedback", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

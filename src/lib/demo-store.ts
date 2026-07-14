@@ -906,7 +906,7 @@ export function useDemoStore() {
       if (!supabase) throw new Error("Supabase is not configured.");
       const normalizedEmail = input.email.trim().toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(normalizedEmail)) throw new Error("Enter a valid email address.");
-      if (input.password.length < 6) throw new Error("Password must be at least 6 characters.");
+      if (input.password.length < 8) throw new Error("Password must be at least 8 characters.");
       const requestedHospital = activeSignupHospitals(data.hospitals.length ? data : seedData).find((hospital) => hospital.id === input.hospitalId);
       if (!requestedHospital) throw new Error("Select a registered hospital.");
 
@@ -966,7 +966,7 @@ export function useDemoStore() {
       if (!supabase) throw new Error("Supabase is not configured.");
       const email = currentUser.email;
       if (!email) throw new Error("No signed-in email was found.");
-      if (newPassword.length < 6) throw new Error("New password must be at least 6 characters.");
+      if (newPassword.length < 8) throw new Error("New password must be at least 8 characters.");
 
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,

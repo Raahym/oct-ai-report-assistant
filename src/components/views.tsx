@@ -469,9 +469,18 @@ export function LoginView() {
       setError("Enter a valid email address.");
       return;
     }
+    if (password.length < 8) {
+      setError(authMode === "signup" ? "Password must be at least 8 characters." : "Enter your account password.");
+      return;
+    }
     setLoading(true);
     try {
       if (authMode === "signup") {
+        if (!fullName.trim()) {
+          setError("Enter your full name.");
+          setLoading(false);
+          return;
+        }
         if (!hospitalId) {
           setError("Select your registered hospital.");
           setLoading(false);
@@ -504,7 +513,7 @@ export function LoginView() {
 
   return (
     <main className="grid min-h-screen bg-slate-50 lg:grid-cols-[1fr_520px]">
-      <section className="hidden bg-[linear-gradient(135deg,#0f6170,#2563eb)] px-14 py-16 text-white lg:flex lg:flex-col lg:justify-between">
+      <section className="hidden min-h-screen bg-[linear-gradient(135deg,#0f6170,#2563eb)] px-14 py-16 text-white lg:flex lg:flex-col lg:justify-between">
         <div>
           <p className="mb-8 text-sm font-bold uppercase tracking-[0.18em] text-white/70">AFIO Clinical Platform</p>
           <h1 className="max-w-xl text-4xl font-black leading-tight">Clinical workflow system for ophthalmology.</h1>
@@ -518,7 +527,7 @@ export function LoginView() {
           ))}
         </div>
       </section>
-      <section className="flex items-center justify-center px-5">
+      <section className={`flex justify-center px-5 py-6 ${authMode === "signup" ? "items-start lg:overflow-y-auto" : "items-center"}`}>
         <Card className="w-full max-w-md p-6">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
@@ -534,7 +543,7 @@ export function LoginView() {
             <p className="mt-1 text-sm text-slate-500">
               {authMode === "signin"
                 ? "Use your approved clinical account."
-                : "Request access for your role. Accounts require email verification and administrator approval."}
+                : "Request access for your hospital role. Accounts stay locked until administrator approval."}
             </p>
           </div>
           <div className="space-y-4">
@@ -556,13 +565,14 @@ export function LoginView() {
             </div>
             <div>
               <label className="label">Email</label>
-              <input className="field mt-1" value={email} onChange={(event) => setEmail(event.target.value)} />
+              <input className="field mt-1" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} />
             </div>
             <div>
               <label className="label">Password</label>
               <input
                 className="field mt-1"
                 type="password"
+                autoComplete={authMode === "signin" ? "current-password" : "new-password"}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
               />
@@ -571,7 +581,7 @@ export function LoginView() {
               <>
                 <div>
                   <label className="label">Full name</label>
-                  <input className="field mt-1" value={fullName} onChange={(event) => setFullName(event.target.value)} />
+                  <input className="field mt-1" autoComplete="name" value={fullName} onChange={(event) => setFullName(event.target.value)} />
                 </div>
                 <div>
                   <label className="label">Role requested</label>
@@ -603,7 +613,7 @@ export function LoginView() {
             ) : null}
             {error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
             {message ? <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">{message}</p> : null}
-            <Button className="w-full" onClick={submit} disabled={loading || !email || !password}>
+            <Button className="w-full" onClick={submit} disabled={loading || !email || !password || (authMode === "signup" && (!fullName.trim() || !hospitalId))}>
               {loading ? <Loader2 className="animate-spin" size={16} /> : null}
               {authMode === "signin" ? "Sign in" : "Request access"}
             </Button>
@@ -633,6 +643,10 @@ export function ForgotPasswordView() {
   const sendReset = async () => {
     setError("");
     setSent(false);
+    if (!isValidEmail(email)) {
+      setError("Enter a valid email address.");
+      return;
+    }
     setLoading(true);
     try {
       await store.resetPassword(email);
@@ -650,7 +664,7 @@ export function ForgotPasswordView() {
       subtitle="Enter your Supabase account email and we will send a reset link."
       action={
         <>
-          <input className="field" placeholder="doctor@clinic.com" value={email} onChange={(event) => setEmail(event.target.value)} />
+          <input className="field" type="email" autoComplete="email" placeholder="doctor@clinic.com" value={email} onChange={(event) => setEmail(event.target.value)} />
           <Button className="w-full" onClick={sendReset} disabled={loading || !email}>
             {loading ? <Loader2 className="animate-spin" size={16} /> : null}
             Send reset link
@@ -675,8 +689,8 @@ export function ResetPasswordView() {
   const updatePassword = async () => {
     setError("");
     setMessage("");
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
       return;
     }
     if (password !== confirmPassword) {
@@ -702,8 +716,8 @@ export function ResetPasswordView() {
       subtitle="Enter the new password after opening the Supabase reset email link."
       action={
         <>
-          <input className="field" type="password" placeholder="New password" value={password} onChange={(event) => setPassword(event.target.value)} />
-          <input className="field" type="password" placeholder="Confirm password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
+          <input className="field" type="password" autoComplete="new-password" placeholder="New password" value={password} onChange={(event) => setPassword(event.target.value)} />
+          <input className="field" type="password" autoComplete="new-password" placeholder="Confirm password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
           <Button className="w-full" onClick={updatePassword} disabled={loading || !password || !confirmPassword}>
             {loading ? <Loader2 className="animate-spin" size={16} /> : null}
             Update password
@@ -728,8 +742,8 @@ export function ChangePasswordView() {
   const submit = async () => {
     setError("");
     setMessage("");
-    if (newPassword.length < 6) {
-      setError("New password must be at least 6 characters.");
+    if (newPassword.length < 8) {
+      setError("New password must be at least 8 characters.");
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -780,7 +794,7 @@ export function ChangePasswordView() {
 
 function AuthCard({ title, subtitle, action }: { title: string; subtitle: string; action: ReactNode }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-5">
+    <main className="flex min-h-screen items-start justify-center bg-slate-50 px-5 py-8 sm:items-center">
       <Card className="w-full max-w-md p-6">
         <h1 className="text-2xl font-black text-slate-950">{title}</h1>
         <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
@@ -2666,7 +2680,7 @@ export function PatientReportCheckView() {
         <Card className="p-5">
           <div className="grid gap-4">
             <Field label="CNIC access ID" value={accessId} placeholder="6110129102913" onChange={(value) => setAccessId(cleanAccessIdInput(value))} />
-            <Field label="Access password" value={password} onChange={setPassword} />
+            <Field label="Access password" type="password" value={password} onChange={setPassword} />
             <Button onClick={checkReport} disabled={checking || !accessId.trim() || !password.trim()}>
               {checking ? <Loader2 className="animate-spin" size={16} /> : <Search size={16} />}
               Check Report
