@@ -61,13 +61,30 @@ export async function DELETE(
   }
 
   try {
-    await admin.from("department_users").delete().eq("user_id", profileId);
+    const nullByProfile = async (table: string, column: string) => {
+      const { error } = await admin.from(table).update({ [column]: null }).eq(column, profileId);
+      if (error) throw error;
+    };
 
-    const { error: profileError } = await admin.from("profiles").delete().eq("id", profileId);
-    if (profileError) throw profileError;
+    const deleteByProfile = async (table: string, column: string) => {
+      const { error } = await admin.from(table).delete().eq(column, profileId);
+      if (error) throw error;
+    };
 
-    const { error: authDeleteError } = await admin.auth.admin.deleteUser(profileId);
-    if (authDeleteError) throw authDeleteError;
+    await deleteByProfile("department_users", "user_id");
+    await nullByProfile("patients", "created_by");
+    await nullByProfile("scans", "uploaded_by");
+    await nullByProfile("reports", "approved_by");
+    await nullByProfile("reports", "created_by");
+    await nullByProfile("report_versions", "edited_by");
+    await nullByProfile("report_templates", "updated_by");
+    await nullByProfile("audit_logs", "user_id");
+
+    const { data: clinics } = await admin.from("clinics").select("id, admin_email").ilike("admin_email", target.email);
+    if (clinics?.length) {
+      const { error } = await admin.from("clinics").update({ admin_email: null }).in("id", clinics.map((clinic: { id: string }) => clinic.id));
+      if (error) throw error;
+    }
 
     await admin.from("audit_logs").insert({
       user_id: authData.user.id,
@@ -76,6 +93,12 @@ export async function DELETE(
       record_id: profileId,
       details: { message: `${target.full_name || target.email} removed from user access` }
     });
+
+    const { error: profileError } = await admin.from("profiles").delete().eq("id", profileId);
+    if (profileError) throw profileError;
+
+    const { error: authDeleteError } = await admin.auth.admin.deleteUser(profileId);
+    if (authDeleteError && !/not found|does not exist|user.*not/i.test(authDeleteError.message)) throw authDeleteError;
 
     return NextResponse.json({ ok: true });
   } catch (error) {
