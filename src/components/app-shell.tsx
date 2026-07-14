@@ -27,8 +27,9 @@ import { getModulesByIds } from "@/lib/modules";
 import { Button } from "./ui";
 
 const businessItems = [
-  { href: "/afio/admin", label: "Business Admin", icon: ShieldCheck },
   { href: "/dashboard", label: "Hospital Preview", icon: LayoutDashboard },
+  { href: "/afio/admin", label: "Business Admin", icon: ShieldCheck },
+  { href: "/afio/members", label: "AFIO Members", icon: Users },
   { href: "/change-password", label: "Change Password", icon: KeyRound }
 ];
 

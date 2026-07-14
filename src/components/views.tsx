@@ -1261,6 +1261,163 @@ export function LockedModuleView({ moduleName, owner, description }: { moduleNam
   );
 }
 
+export function AfioBusinessMembersView() {
+  const store = useDemoStore();
+  const [error, setError] = useState("");
+  const permissionKeys: BusinessPermissionKey[] = ["manage_members", "add_hospitals", "edit_hospitals", "suspend_hospitals", "manage_modules", "delete_hospitals"];
+  const permissionLabels: Record<BusinessPermissionKey, string> = {
+    manage_members: "Invite/manage AFIO members",
+    add_hospitals: "Add hospitals",
+    edit_hospitals: "Edit hospital details",
+    suspend_hospitals: "Suspend/enable hospitals",
+    manage_modules: "Grant models/modules",
+    delete_hospitals: "Delete hospitals"
+  };
+  const ownerEmail = "raahymm@gmail.com";
+  const isOwner = store.currentUser.role === "afio_admin" && store.currentUser.email.toLowerCase() === ownerEmail;
+  const hasBusinessPermission = (key: BusinessPermissionKey) => isOwner || store.currentUser.businessPermissions?.[key] === true;
+  const [memberInvite, setMemberInvite] = useState({
+    email: "",
+    fullName: "",
+    permissions: {
+      add_hospitals: true,
+      edit_hospitals: true,
+      suspend_hospitals: false,
+      manage_modules: false,
+      delete_hospitals: false,
+      manage_members: false
+    } as BusinessPermissions
+  });
+  const [memberResult, setMemberResult] = useState<{ email: string; temporaryPassword: string; emailSent: boolean; emailMessage?: string } | null>(null);
+  const [savingMemberId, setSavingMemberId] = useState("");
+  const businessMembers = store.data.profiles.filter((profile) => profile.role === "afio_admin");
+
+  const inviteMember = async () => {
+    setError("");
+    setMemberResult(null);
+    setSavingMemberId("new");
+    try {
+      const result = await store.inviteBusinessMember(memberInvite);
+      setMemberResult({
+        email: result.profile.email,
+        temporaryPassword: result.temporaryPassword,
+        emailSent: result.emailSent,
+        emailMessage: result.emailMessage
+      });
+      setMemberInvite({ email: "", fullName: "", permissions: memberInvite.permissions });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not invite business member.");
+    } finally {
+      setSavingMemberId("");
+    }
+  };
+
+  const updateMemberPermission = async (profileId: string, permissions: BusinessPermissions) => {
+    setError("");
+    setSavingMemberId(profileId);
+    try {
+      await store.updateBusinessMemberPermissions(profileId, permissions);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update business member permissions.");
+    } finally {
+      setSavingMemberId("");
+    }
+  };
+
+  if (store.currentUser.role !== "afio_admin") {
+    return <EmptyState title="AFIO members only" body="Only AFIO Business Admin accounts can manage internal AFIO members." />;
+  }
+
+  return (
+    <>
+      <PageTitle title="AFIO Members" subtitle="Invite internal AFIO staff and control what business actions they can perform." />
+      {error ? <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
+      {memberResult ? (
+        <Card className="mb-5 border-emerald-200 bg-emerald-50 p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase text-emerald-700">Business member ready</p>
+              <h3 className="mt-1 text-lg font-black text-slate-950">{memberResult.email}</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                {memberResult.emailSent ? "Invite email sent." : memberResult.emailMessage ?? "Email was not sent, so share these credentials directly."}
+              </p>
+            </div>
+            <div className="rounded-md border border-emerald-200 bg-white p-4 text-sm">
+              <p className="font-black text-slate-950">Temporary password</p>
+              <p className="mt-2 break-all font-mono text-slate-700">{memberResult.temporaryPassword}</p>
+              <Button className="mt-3 w-full" variant="secondary" onClick={() => void navigator.clipboard.writeText(memberResult.temporaryPassword)}>
+                <Copy size={16} />
+                Copy Password
+              </Button>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+      <Card className="p-5">
+        <CardHeader title="AFIO business members" subtitle="Create internal business logins and decide who can manage hospitals, modules, and other AFIO members." />
+        {hasBusinessPermission("manage_members") ? (
+          <>
+            <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
+              <Field label="Member email" value={memberInvite.email} placeholder="member@afio.com" onChange={(value) => setMemberInvite({ ...memberInvite, email: value })} />
+              <Field label="Full name optional" value={memberInvite.fullName} placeholder="AFIO Team Member" onChange={(value) => setMemberInvite({ ...memberInvite, fullName: value })} />
+              <div className="flex items-end">
+                <Button className="w-full" disabled={savingMemberId === "new" || !memberInvite.email} onClick={inviteMember}>
+                  <Plus size={16} />
+                  {savingMemberId === "new" ? "Inviting..." : "Invite Member"}
+                </Button>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-2 md:grid-cols-3">
+              {permissionKeys.map((key) => (
+                <button
+                  key={key}
+                  className={`rounded-md border px-3 py-2 text-left text-sm font-bold ${memberInvite.permissions[key] ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-slate-200 bg-slate-50 text-slate-500"}`}
+                  onClick={() => setMemberInvite({ ...memberInvite, permissions: { ...memberInvite.permissions, [key]: !memberInvite.permissions[key] } })}
+                >
+                  {memberInvite.permissions[key] ? "On" : "Off"} - {permissionLabels[key]}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="rounded-md bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-600">Your account can view business members but cannot invite or change permissions.</p>
+        )}
+        <div className="mt-5 grid gap-3">
+          {businessMembers.map((member) => {
+            const memberIsOwner = member.email.toLowerCase() === ownerEmail;
+            return (
+              <div key={member.id} className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-black text-slate-950">{member.fullName}</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-500">{member.email}</p>
+                  </div>
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-black uppercase text-slate-500">{memberIsOwner ? "Owner" : member.isActive ? "Member" : "Suspended"}</span>
+                </div>
+                <div className="mt-3 grid gap-2 md:grid-cols-3">
+                  {permissionKeys.map((key) => {
+                    const enabled = memberIsOwner || member.businessPermissions?.[key] === true;
+                    return (
+                      <button
+                        key={key}
+                        className={`rounded-md border px-3 py-2 text-left text-xs font-bold ${enabled ? "border-emerald-200 bg-white text-emerald-900" : "border-slate-200 bg-white text-slate-500"}`}
+                        disabled={memberIsOwner || !hasBusinessPermission("manage_members") || savingMemberId === member.id}
+                        onClick={() => updateMemberPermission(member.id, { ...(member.businessPermissions ?? {}), [key]: !enabled })}
+                      >
+                        {enabled ? "On" : "Off"} - {permissionLabels[key]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    </>
+  );
+}
+
 export function AfioBusinessAdminView() {
   const store = useDemoStore();
   const [error, setError] = useState("");
@@ -1486,88 +1643,6 @@ export function AfioBusinessAdminView() {
           </div>
         </Card>
       ) : null}
-      {memberResult ? (
-        <Card className="mb-5 border-emerald-200 bg-emerald-50 p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p className="text-xs font-black uppercase text-emerald-700">Business member ready</p>
-              <h3 className="mt-1 text-lg font-black text-slate-950">{memberResult.email}</h3>
-              <p className="mt-2 text-sm text-slate-600">
-                {memberResult.emailSent ? "Invite email sent." : memberResult.emailMessage ?? "Email was not sent, so share these credentials directly."}
-              </p>
-            </div>
-            <div className="rounded-md border border-emerald-200 bg-white p-4 text-sm">
-              <p className="font-black text-slate-950">Temporary password</p>
-              <p className="mt-2 break-all font-mono text-slate-700">{memberResult.temporaryPassword}</p>
-              <Button className="mt-3 w-full" variant="secondary" onClick={() => void navigator.clipboard.writeText(memberResult.temporaryPassword)}>
-                <Copy size={16} />
-                Copy Password
-              </Button>
-            </div>
-          </div>
-        </Card>
-      ) : null}
-      <Card className="mb-5 p-5">
-        <CardHeader title="AFIO business members" subtitle="Invite internal AFIO staff and control what business actions they can perform." />
-        {hasBusinessPermission("manage_members") ? (
-          <>
-            <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
-              <Field label="Member email" value={memberInvite.email} placeholder="member@afio.com" onChange={(value) => setMemberInvite({ ...memberInvite, email: value })} />
-              <Field label="Full name optional" value={memberInvite.fullName} placeholder="AFIO Team Member" onChange={(value) => setMemberInvite({ ...memberInvite, fullName: value })} />
-              <div className="flex items-end">
-                <Button className="w-full" disabled={savingMemberId === "new" || !memberInvite.email} onClick={inviteMember}>
-                  <Plus size={16} />
-                  {savingMemberId === "new" ? "Inviting..." : "Invite Member"}
-                </Button>
-              </div>
-            </div>
-            <div className="mt-4 grid gap-2 md:grid-cols-3">
-              {permissionKeys.map((key) => (
-                <button
-                  key={key}
-                  className={`rounded-md border px-3 py-2 text-left text-sm font-bold ${memberInvite.permissions[key] ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-slate-200 bg-slate-50 text-slate-500"}`}
-                  onClick={() => setMemberInvite({ ...memberInvite, permissions: { ...memberInvite.permissions, [key]: !memberInvite.permissions[key] } })}
-                >
-                  {memberInvite.permissions[key] ? "On" : "Off"} - {permissionLabels[key]}
-                </button>
-              ))}
-            </div>
-          </>
-        ) : (
-          <p className="rounded-md bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-600">Your account can view business members but cannot invite or change permissions.</p>
-        )}
-        <div className="mt-5 grid gap-3">
-          {businessMembers.map((member) => {
-            const memberIsOwner = member.email.toLowerCase() === ownerEmail;
-            return (
-              <div key={member.id} className="rounded-md border border-slate-200 bg-slate-50 p-4">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="font-black text-slate-950">{member.fullName}</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-500">{member.email}</p>
-                  </div>
-                  <span className="rounded-full bg-white px-3 py-1 text-xs font-black uppercase text-slate-500">{memberIsOwner ? "Owner" : member.isActive ? "Member" : "Suspended"}</span>
-                </div>
-                <div className="mt-3 grid gap-2 md:grid-cols-3">
-                  {permissionKeys.map((key) => {
-                    const enabled = memberIsOwner || member.businessPermissions?.[key] === true;
-                    return (
-                      <button
-                        key={key}
-                        className={`rounded-md border px-3 py-2 text-left text-xs font-bold ${enabled ? "border-emerald-200 bg-white text-emerald-900" : "border-slate-200 bg-white text-slate-500"}`}
-                        disabled={memberIsOwner || !hasBusinessPermission("manage_members") || savingMemberId === member.id}
-                        onClick={() => updateMemberPermission(member.id, { ...(member.businessPermissions ?? {}), [key]: !enabled })}
-                      >
-                        {enabled ? "On" : "Off"} - {permissionLabels[key]}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Card>
       <Card className="mb-5 p-5">
         <CardHeader title="Add hospital" subtitle="Creates the hospital workspace, purchased service access, first hospital admin login, and isolated patient/report ownership." />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
