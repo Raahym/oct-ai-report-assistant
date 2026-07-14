@@ -14,6 +14,8 @@ import type {
   DiseaseClass,
   EyeSide,
   Hospital,
+  BusinessPermissions,
+  BusinessPermissionKey,
   ModuleId,
   Patient,
   Profile,
@@ -24,6 +26,14 @@ import type {
 
 const STORAGE_KEY = "oct-ai-report-assistant-demo-v1";
 const SUPER_ADMIN_EMAIL = "raahymm@gmail.com";
+const ALL_BUSINESS_PERMISSIONS: BusinessPermissionKey[] = [
+  "manage_members",
+  "add_hospitals",
+  "edit_hospitals",
+  "suspend_hospitals",
+  "manage_modules",
+  "delete_hospitals"
+];
 
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -76,6 +86,14 @@ const demoProfiles: Profile[] = [
     role: "afio_admin",
     specialization: "Business and access control",
     clinicName: "AFIO Platform",
+    businessPermissions: {
+      manage_members: true,
+      add_hospitals: true,
+      edit_hospitals: true,
+      suspend_hospitals: true,
+      manage_modules: true,
+      delete_hospitals: true
+    },
     isActive: true
   },
   {
@@ -222,6 +240,7 @@ type DbProfile = {
   clinic_name: string | null;
   clinic_id: string | null;
   default_department_id: string | null;
+  business_permissions: BusinessPermissions | null;
   is_active: boolean | null;
 };
 
@@ -252,6 +271,13 @@ type ProvisionHospitalResponse = {
 type UpdateHospitalResponse = {
   hospital: DbHospital;
   profile?: DbProfile | null;
+  temporaryPassword: string;
+  emailSent: boolean;
+  emailMessage?: string;
+};
+
+type BusinessMemberInviteResponse = {
+  profile: DbProfile;
   temporaryPassword: string;
   emailSent: boolean;
   emailMessage?: string;
@@ -461,8 +487,24 @@ function mapProfile(row: DbProfile): Profile {
     clinicName: row.clinic_name ?? undefined,
     clinicId: row.clinic_id ?? undefined,
     defaultDepartmentId: row.default_department_id ?? undefined,
+    businessPermissions: row.business_permissions ?? undefined,
     isActive: row.is_active ?? true
   };
+}
+
+function isBusinessOwner(profile: Profile) {
+  return profile.role === "afio_admin" && profile.email.toLowerCase() === SUPER_ADMIN_EMAIL;
+}
+
+function hasBusinessPermission(profile: Profile, permission: BusinessPermissionKey) {
+  if (isBusinessOwner(profile)) return true;
+  return profile.role === "afio_admin" && profile.businessPermissions?.[permission] === true;
+}
+
+function requireBusinessPermission(profile: Profile, permission: BusinessPermissionKey) {
+  if (!hasBusinessPermission(profile, permission)) {
+    throw new Error("Your Business Admin account does not have permission for this action.");
+  }
 }
 
 function mapHospital(row: DbHospital): Hospital {
@@ -533,6 +575,44 @@ async function updateProvisionedHospital(hospitalId: string, input: {
     throw new Error(payload.error ?? "Could not update hospital.");
   }
   return payload as UpdateHospitalResponse;
+}
+
+async function inviteBusinessMember(input: { email: string; fullName?: string; permissions: BusinessPermissions }) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) throw new Error("Your Business Admin session expired. Sign in again.");
+
+  const response = await fetch("/api/business-members/invite", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error ?? "Could not invite business member.");
+  return payload as BusinessMemberInviteResponse;
+}
+
+async function updateBusinessMemberPermissions(profileId: string, permissions: BusinessPermissions) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) throw new Error("Your Business Admin session expired. Sign in again.");
+
+  const response = await fetch(`/api/business-members/${profileId}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ permissions })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error ?? "Could not update business member.");
+  return payload as { profile: DbProfile };
 }
 
 function mapPatient(row: DbPatient): Patient {
@@ -1664,10 +1744,62 @@ export function useDemoStore() {
         profiles: data.profiles.filter((profile) => profile.id !== profileId)
       }, "User removed", "profile", profileId, target.email));
     },
+    async inviteBusinessMember(input: { email: string; fullName?: string; permissions: BusinessPermissions }) {
+      requireBusinessPermission(currentUser, "manage_members");
+      if (mode === "supabase" && supabase) {
+        const result = await inviteBusinessMember(input);
+        const profile = mapProfile(result.profile);
+        setData((current) => ({
+          ...current,
+          profiles: [profile, ...current.profiles.filter((item) => item.id !== profile.id)]
+        }));
+        return {
+          profile,
+          temporaryPassword: result.temporaryPassword,
+          emailSent: result.emailSent,
+          emailMessage: result.emailMessage
+        };
+      }
+
+      const profile: Profile = {
+        id: id("business"),
+        fullName: input.fullName || input.email.split("@")[0],
+        email: input.email,
+        role: "afio_admin",
+        clinicName: "AFIO Platform",
+        businessPermissions: input.permissions,
+        isActive: true
+      };
+      commit(audit({ ...data, profiles: [profile, ...data.profiles] }, "Business member invited", "profile", profile.id, profile.email));
+      return { profile, temporaryPassword: "demo-password", emailSent: false };
+    },
+    async updateBusinessMemberPermissions(profileId: string, permissions: BusinessPermissions) {
+      requireBusinessPermission(currentUser, "manage_members");
+      const target = data.profiles.find((profile) => profile.id === profileId);
+      if (!target || target.role !== "afio_admin") throw new Error("Business member not found.");
+      if (isBusinessOwner(target)) throw new Error("Owner permissions cannot be changed.");
+
+      if (mode === "supabase" && supabase) {
+        const result = await updateBusinessMemberPermissions(profileId, permissions);
+        const profile = mapProfile(result.profile);
+        setData((current) => ({
+          ...current,
+          profiles: current.profiles.map((item) => (item.id === profile.id ? profile : item))
+        }));
+        return profile;
+      }
+
+      const profiles = data.profiles.map((profile) =>
+        profile.id === profileId ? { ...profile, businessPermissions: permissions } : profile
+      );
+      commit(audit({ ...data, profiles }, "Business member permissions updated", "profile", profileId, "Permissions changed"));
+      return profiles.find((profile) => profile.id === profileId);
+    },
     async createHospital(input: { name: string; code: string; adminEmail?: string; adminPassword?: string; subscriptionStatus: Hospital["subscriptionStatus"]; enabledModules: ModuleId[] }) {
       if (currentUser.role !== "afio_admin") {
         throw new Error("Only Business Admin can add hospitals.");
       }
+      requireBusinessPermission(currentUser, "add_hospitals");
       const code = input.code.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "-");
       if (!input.name.trim() || !code) throw new Error("Hospital name and code are required.");
 
@@ -1716,6 +1848,7 @@ export function useDemoStore() {
       if (currentUser.role !== "afio_admin") {
         throw new Error("Only Business Admin can edit hospital details.");
       }
+      requireBusinessPermission(currentUser, "edit_hospitals");
       const code = input.code.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "-");
       if (!input.name.trim() || !code) throw new Error("Hospital name and code are required.");
 
@@ -1764,6 +1897,7 @@ export function useDemoStore() {
       if (currentUser.role !== "afio_admin") {
         throw new Error("Only Business Admin can remove hospitals.");
       }
+      requireBusinessPermission(currentUser, "delete_hospitals");
       const hospital = data.hospitals.find((item) => item.id === hospitalId);
       if (!hospital) throw new Error("Hospital not found.");
 
@@ -1796,6 +1930,9 @@ export function useDemoStore() {
       if (currentUser.role !== "afio_admin") {
         throw new Error("Only Business Admin can manage hospital subscriptions.");
       }
+      if (typeof input.isActive === "boolean" || input.subscriptionStatus === "suspended") requireBusinessPermission(currentUser, "suspend_hospitals");
+      if (input.enabledModules) requireBusinessPermission(currentUser, "manage_modules");
+      if (input.subscriptionStatus && input.subscriptionStatus !== "suspended") requireBusinessPermission(currentUser, "edit_hospitals");
       if (mode === "supabase" && supabase) {
         const client = supabase;
         const hospital = data.hospitals.find((item) => item.id === hospitalId);

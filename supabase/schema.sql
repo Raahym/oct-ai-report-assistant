@@ -8,6 +8,7 @@ create table if not exists profiles (
   doctor_id text unique,
   specialization text,
   clinic_name text,
+  business_permissions jsonb default '{}'::jsonb,
   is_active boolean default true,
   created_at timestamptz default now()
 );

@@ -3,6 +3,14 @@ export type RequestedRole = Role;
 export type Gender = "Female" | "Male" | "Other";
 export type EyeSide = "Left" | "Right" | "Both" | "Unknown";
 export type ModuleId = "oct" | "vkg" | "corneal" | "retina";
+export type BusinessPermissionKey =
+  | "manage_members"
+  | "add_hospitals"
+  | "edit_hospitals"
+  | "suspend_hospitals"
+  | "manage_modules"
+  | "delete_hospitals";
+export type BusinessPermissions = Partial<Record<BusinessPermissionKey, boolean>>;
 export type DiseaseClass = "CNV" | "DME" | "DRUSEN" | "NORMAL";
 export type VkgClass = "NORMAL" | "KCN" | "SUSPECT";
 export type RetinaClass = "NO_DR" | "MILD_DR" | "MODERATE_DR" | "SEVERE_DR" | "PROLIFERATIVE_DR";
@@ -20,6 +28,7 @@ export type Profile = {
   clinicName?: string;
   clinicId?: string;
   defaultDepartmentId?: string;
+  businessPermissions?: BusinessPermissions;
   isActive: boolean;
 };
 
