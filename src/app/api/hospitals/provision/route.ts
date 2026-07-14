@@ -54,7 +54,6 @@ async function sendWelcomeEmail(input: {
   hospitalName: string;
   password: string;
   enabledModules: ModuleId[];
-  activationLink?: string;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM ?? "AFIO Platform <reports@cvclinics.online>";
@@ -62,13 +61,13 @@ async function sendWelcomeEmail(input: {
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://cvclinics.online";
   const modules = input.enabledModules.map((moduleId) => moduleNames[moduleId]).join(", ") || "No modules enabled yet";
-  const signInUrl = input.activationLink ?? `${appUrl}/login`;
+  const signInUrl = `${appUrl}/login`;
   const html = `
     <div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a">
       <h2>Welcome to AFIO Clinical Report Platform</h2>
       <p>Your hospital workspace for <strong>${input.hospitalName}</strong> is ready.</p>
       <p>Enabled services: <strong>${modules}</strong></p>
-      <p>Activate your account here: <a href="${signInUrl}">${signInUrl}</a></p>
+      <p>Sign in here: <a href="${signInUrl}">${signInUrl}</a></p>
       <p><strong>Email:</strong> ${input.to}<br/><strong>Temporary password:</strong> ${input.password}</p>
       <p>Please change this password after your first login.</p>
       <p>Thank you for choosing AFIO clinical services.</p>
@@ -105,7 +104,8 @@ export async function POST(request: NextRequest) {
       !supabaseAnonKey ? "NEXT_PUBLIC_SUPABASE_ANON_KEY" : "",
       !serviceRoleKey ? "SUPABASE_SERVICE_ROLE_KEY" : ""
     ].filter(Boolean);
-    return jsonError(`Supabase server provisioning is not configured. Missing: ${missing.join(", ")}`, 500);
+    console.error("Hospital provisioning is missing server environment variables.", { missing });
+    return jsonError("Server provisioning is not configured. Ask AFIO admin to check deployment settings.", 500);
   }
 
   const authHeader = request.headers.get("authorization");
@@ -193,28 +193,25 @@ export async function POST(request: NextRequest) {
       if (moduleError) throw moduleError;
     }
 
-    const { data: signupLink, error: createUserError } = await admin.auth.admin.generateLink({
-      type: "signup",
+    const { data: createdUser, error: createUserError } = await admin.auth.admin.createUser({
       email: adminEmail,
       password: adminPassword,
-      options: {
-        data: {
-          full_name: `${name} Admin`,
-          role: "hospital_admin",
-          clinic_id: clinic.id,
-          clinic_name: name
-        },
-        redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://cvclinics.online"}/login`
+      email_confirm: true,
+      user_metadata: {
+        full_name: `${name} Admin`,
+        role: "hospital_admin",
+        clinic_id: clinic.id,
+        clinic_name: name
       }
     });
-    if (createUserError || !signupLink.user) throw createUserError ?? new Error("Could not create hospital admin activation link.");
-    adminUserId = signupLink.user.id;
+    if (createUserError || !createdUser.user) throw createUserError ?? new Error("Could not create hospital admin login.");
+    adminUserId = createdUser.user.id;
 
     const defaultDepartment = departmentList.find((department) => department.module_id === (enabledModules[0] ?? "oct")) ?? departmentList[0];
     const { data: profile, error: profileError } = await admin
       .from("profiles")
       .insert({
-        id: signupLink.user.id,
+        id: createdUser.user.id,
         full_name: `${name} Admin`,
         email: adminEmail,
         role: "hospital_admin",
@@ -234,7 +231,7 @@ export async function POST(request: NextRequest) {
       const { error: departmentUserError } = await admin.from("department_users").insert(
         enabledDepartmentRows.map((department) => ({
           department_id: department.id,
-          user_id: signupLink.user.id,
+          user_id: createdUser.user.id,
           role: "hospital_admin",
           can_view_all: true
         }))
@@ -250,14 +247,12 @@ export async function POST(request: NextRequest) {
       details: { message: `${name} provisioned with hospital admin ${adminEmail}` }
     });
 
-    const activationLink = signupLink.properties?.action_link;
-    const email = await sendWelcomeEmail({ to: adminEmail, hospitalName: name, password: adminPassword, enabledModules, activationLink });
+    const email = await sendWelcomeEmail({ to: adminEmail, hospitalName: name, password: adminPassword, enabledModules });
 
     return NextResponse.json({
       hospital: { ...clinic, clinic_modules: enabledModules.map((moduleId: ModuleId) => ({ module_id: moduleId, is_enabled: true })) },
       profile,
       temporaryPassword: adminPassword,
-      activationLink,
       emailSent: email.sent,
       emailMessage: email.sent ? "Welcome email sent." : email.reason
     });
