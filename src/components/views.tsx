@@ -275,6 +275,10 @@ function moduleFromSearchParams(searchParams: ReturnType<typeof useSearchParams>
   return moduleId === "vkg" || moduleId === "retina" || moduleId === "corneal" ? moduleId : "oct";
 }
 
+function isModuleId(value?: string | null): value is ModuleId {
+  return value === "oct" || value === "vkg" || value === "retina" || value === "corneal";
+}
+
 function getModuleLabel(moduleId: ModuleId) {
   if (moduleId === "vkg") return "VKG";
   if (moduleId === "retina") return "Retina";
@@ -1988,7 +1992,11 @@ export function PatientProfileView({ id }: { id: string }) {
   const searchParams = useSearchParams();
   const store = useDemoStore();
   const patient = store.data.patients.find((item) => item.id === id);
-  const moduleId = moduleFromSearchParams(searchParams);
+  const requestedModuleId = searchParams.get("module");
+  const firstScanModuleId = store.data.scans.find((scan) => scan.patientId === id)?.moduleId;
+  const moduleId: ModuleId = isModuleId(requestedModuleId)
+    ? requestedModuleId
+    : patient?.moduleId ?? firstScanModuleId ?? "oct";
   const moduleLabel = getModuleLabel(moduleId);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
