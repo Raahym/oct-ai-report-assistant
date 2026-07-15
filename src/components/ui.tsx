@@ -15,8 +15,8 @@ export function Button({
       className={clsx(
         "inline-flex min-h-10 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
         variant === "primary" && "bg-clinic-600 text-white shadow-soft hover:bg-clinic-700",
-        variant === "secondary" && "border border-slate-200 bg-white text-slate-800 hover:bg-slate-50",
-        variant === "ghost" && "text-slate-600 hover:bg-slate-100",
+        variant === "secondary" && "border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800",
+        variant === "ghost" && "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
         variant === "danger" && "bg-red-600 text-white hover:bg-red-700",
         className
       )}
@@ -34,7 +34,7 @@ export function Card({
   children: ReactNode;
   className?: string;
 }) {
-  return <section className={clsx("rounded-lg border border-slate-200 bg-white shadow-panel", className)}>{children}</section>;
+  return <section className={clsx("rounded-lg border border-slate-200 bg-white shadow-panel dark:border-slate-800 dark:bg-slate-900", className)}>{children}</section>;
 }
 
 export function CardHeader({
@@ -82,7 +82,7 @@ export function StatusBadge({ status }: { status: ReportStatus | "demo" | "activ
 
 export function EmptyState({ title, body }: { title: string; body: string }) {
   return (
-    <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center">
+    <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center dark:border-slate-700 dark:bg-slate-950/60">
       <p className="font-semibold text-slate-800">{title}</p>
       <p className="mt-1 text-sm text-slate-500">{body}</p>
     </div>

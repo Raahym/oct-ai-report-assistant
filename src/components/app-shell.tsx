@@ -13,8 +13,10 @@ import {
   KeyRound,
   LayoutDashboard,
   LogOut,
+  Moon,
   ShieldCheck,
   ScanEye,
+  Sun,
   UserCog,
   Activity,
   Eye,
@@ -81,6 +83,8 @@ const adminItems = [
   { href: "/admin/audit-logs", label: "Login & Audit History", icon: ShieldCheck }
 ];
 
+const THEME_KEY = "afio-theme";
+
 function EyeDepartmentLogo() {
   return (
     <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-md bg-clinic-600 text-white shadow-soft">
@@ -108,6 +112,24 @@ export function AppShell({ children }: { children: ReactNode }) {
   const store = useDemoStore();
   const isAuthenticated = Boolean(store.data.currentUserId);
   const [openModules, setOpenModules] = useState<Record<string, boolean>>({});
+  const [darkMode, setDarkMode] = useState(false);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem(THEME_KEY);
+    const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+    const enabled = saved ? saved === "dark" : prefersDark;
+    setDarkMode(enabled);
+    document.documentElement.classList.toggle("dark", enabled);
+  }, []);
+
+  const toggleTheme = () => {
+    setDarkMode((current) => {
+      const next = !current;
+      document.documentElement.classList.toggle("dark", next);
+      window.localStorage.setItem(THEME_KEY, next ? "dark" : "light");
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (store.ready && !isAuthenticated) {
@@ -227,6 +249,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
         </nav>
         <div className="fixed bottom-0 left-0 w-72 border-t border-slate-100 bg-white p-4">
+          <button
+            className="mb-3 flex w-full items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+            onClick={toggleTheme}
+            type="button"
+          >
+            <span>{darkMode ? "Dark mode" : "Light mode"}</span>
+            {darkMode ? <Moon size={16} /> : <Sun size={16} />}
+          </button>
           <div className="rounded-md bg-slate-50 p-3">
             <p className="text-sm font-bold text-slate-900">{store.currentUser.fullName}</p>
             <p className="text-xs text-slate-500">{store.currentUser.role.toUpperCase()}</p>
@@ -241,6 +271,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               <h1 className="text-xl font-black text-slate-950">{store.currentUser.role === "afio_admin" ? "Business Admin" : `${hospitalName} Clinical Report Platform`}</h1>
             </div>
             <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
+              <Button variant="secondary" onClick={toggleTheme} aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}>
+                {darkMode ? <Moon size={16} /> : <Sun size={16} />}
+                <span className="hidden sm:inline">{darkMode ? "Dark" : "Light"}</span>
+              </Button>
               <select
                 className="field min-h-10 w-full py-2 text-sm font-semibold md:w-56 lg:hidden"
                 value={items.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)) ? items.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))?.href : "/dashboard"}

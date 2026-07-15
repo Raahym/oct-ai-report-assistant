@@ -9,7 +9,22 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                var saved = localStorage.getItem('afio-theme');
+                var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                if ((saved && saved === 'dark') || (!saved && prefersDark)) {
+                  document.documentElement.classList.add('dark');
+                }
+              } catch (_) {}
+            `
+          }}
+        />
+        {children}
+      </body>
     </html>
   );
 }
