@@ -1977,7 +1977,7 @@ export function SearchPatientsView() {
         </div>
       </Card>
       <Card className="mt-5 overflow-hidden">
-        <PatientTable patients={results} scans={store.data.scans} reports={store.data.reports} />
+        <PatientTable patients={results} scans={store.data.scans} reports={store.data.reports} moduleId={moduleId} />
       </Card>
     </>
   );
@@ -1985,8 +1985,11 @@ export function SearchPatientsView() {
 
 export function PatientProfileView({ id }: { id: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const store = useDemoStore();
   const patient = store.data.patients.find((item) => item.id === id);
+  const moduleId = moduleFromSearchParams(searchParams);
+  const moduleLabel = getModuleLabel(moduleId);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -2024,8 +2027,8 @@ export function PatientProfileView({ id }: { id: string }) {
   }, [patient?.id, patient?.updatedAt]);
 
   if (!patient) return <Missing title="Patient not found" href="/patients/search" label="Back to search" />;
-  const scans = store.data.scans.filter((scan) => scan.patientId === patient.id);
-  const reports = store.data.reports.filter((report) => report.patientId === patient.id);
+  const scans = store.data.scans.filter((scan) => scan.patientId === patient.id && (scan.moduleId ?? "oct") === moduleId);
+  const reports = store.data.reports.filter((report) => report.patientId === patient.id && (report.moduleId ?? "oct") === moduleId);
   const accessPassword = getPatientCurrentAccessPassword(patient);
   const accessId = getPatientAccessId(patient);
 
@@ -2080,10 +2083,10 @@ export function PatientProfileView({ id }: { id: string }) {
               {deleting ? <Loader2 className="animate-spin" size={16} /> : null}
               Delete Patient
             </Button>
-            <Link href={`/scans/upload?patient=${patient.id}`} className="block">
+            <Link href={`/scans/upload?module=${moduleId}&patient=${patient.id}`} className="block">
               <Button className="w-full">
                 <Upload size={16} />
-                Upload New OCT Scan
+                Upload New {moduleLabel} Scan
               </Button>
             </Link>
           </div>
@@ -2140,7 +2143,7 @@ export function PatientProfileView({ id }: { id: string }) {
                 const report = store.data.reports.find((item) => item.scanId === scan.id);
                 return (
                   <div key={scan.id} className="grid gap-4 px-5 py-4 md:grid-cols-[92px_1fr_auto] md:items-center">
-                    <img src={scan.imageUrl} alt="OCT thumbnail" className="h-20 w-24 rounded-md border border-slate-200 object-cover" />
+                    <img src={scan.imageUrl} alt={`${getModuleLabel(scan.moduleId ?? "oct")} thumbnail`} className="h-20 w-24 rounded-md border border-slate-200 object-cover" />
                     <div>
                       <p className="font-bold text-slate-900">{new Date(scan.createdAt).toLocaleString()}</p>
                       <p className="text-sm text-slate-500">Eye side: {scan.eyeSide}</p>
@@ -2160,7 +2163,7 @@ export function PatientProfileView({ id }: { id: string }) {
             </div>
           ) : (
             <div className="p-5">
-              <EmptyState title="No scans yet" body="Upload an OCT scan to start analysis." />
+              <EmptyState title="No scans yet" body={`Upload a ${moduleLabel} scan to start analysis.`} />
             </div>
           )}
         </Card>
@@ -2180,7 +2183,8 @@ export function UploadScanView() {
   const moduleId = moduleFromSearchParams(searchParams);
   const moduleLabel = getModuleLabel(moduleId);
   const modulePatients = filterPatientsForModule(store.data.patients, store.data.scans, moduleId);
-  const [patientId, setPatientId] = useState("");
+  const requestedPatientId = searchParams.get("patient") ?? "";
+  const [patientId, setPatientId] = useState(requestedPatientId);
   const [eyeSide, setEyeSide] = useState<EyeSide>("Unknown");
   const [scanNotes, setScanNotes] = useState("");
   const [imageUrl, setImageUrl] = useState("");
@@ -2295,10 +2299,10 @@ export function UploadScanView() {
         <Card className="p-5">
           <h3 className="font-black text-slate-950">Image Preview</h3>
           {imageUrl ? (
-            <img src={imageUrl} alt="Uploaded OCT preview" className="mt-4 aspect-[4/3] w-full rounded-md border border-slate-200 object-cover" />
+            <img src={imageUrl} alt={`Uploaded ${moduleLabel} preview`} className="mt-4 aspect-[4/3] w-full rounded-md border border-slate-200 object-cover" />
           ) : (
             <div className="mt-4">
-              <EmptyState title="No image selected" body="The OCT preview appears here before upload." />
+              <EmptyState title="No image selected" body={`The ${moduleLabel} preview appears here before upload.`} />
             </div>
           )}
         </Card>
@@ -3753,23 +3757,24 @@ function ReportRows({ reports }: { reports: Report[] }) {
   );
 }
 
-function PatientTable({ patients, scans, reports }: { patients: Patient[]; scans: { patientId: string; createdAt: string }[]; reports: Report[] }) {
+function PatientTable({ patients, scans, reports, moduleId }: { patients: Patient[]; scans: { patientId: string; createdAt: string; moduleId?: ModuleId }[]; reports: Report[]; moduleId: ModuleId }) {
   if (!patients.length) return <div className="p-5"><EmptyState title="No patients found" body="Try a different CNIC or name." /></div>;
   return (
     <>
       <div className="divide-y divide-slate-100 md:hidden">
         {patients.map((patient) => {
-          const patientScans = scans.filter((scan) => scan.patientId === patient.id);
+          const patientScans = scans.filter((scan) => scan.patientId === patient.id && (scan.moduleId ?? "oct") === moduleId);
+          const patientReports = reports.filter((report) => report.patientId === patient.id && (report.moduleId ?? "oct") === moduleId);
           return (
             <div key={patient.id} className="p-4">
               <p className="font-black text-slate-950">{patient.fullName}</p>
               <p className="mt-1 text-sm font-semibold text-clinic-700">{patient.patientCode}</p>
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <Info label="Age / Gender" value={`${patient.age} / ${patient.gender}`} />
-                <Info label="Reports" value={String(reports.filter((report) => report.patientId === patient.id).length)} />
+                <Info label="Reports" value={String(patientReports.length)} />
               </div>
               <Info label="Last scan" value={patientScans[0] ? new Date(patientScans[0].createdAt).toLocaleDateString() : "-"} />
-              <Link href={`/patients/${patient.id}`} className="mt-4 block">
+              <Link href={`/patients/${patient.id}?module=${moduleId}`} className="mt-4 block">
                 <Button className="w-full" variant="secondary">Open Patient</Button>
               </Link>
             </div>
@@ -3789,16 +3794,17 @@ function PatientTable({ patients, scans, reports }: { patients: Patient[]; scans
         </thead>
         <tbody className="divide-y divide-slate-100">
           {patients.map((patient) => {
-            const patientScans = scans.filter((scan) => scan.patientId === patient.id);
+            const patientScans = scans.filter((scan) => scan.patientId === patient.id && (scan.moduleId ?? "oct") === moduleId);
+            const patientReports = reports.filter((report) => report.patientId === patient.id && (report.moduleId ?? "oct") === moduleId);
             return (
               <tr key={patient.id}>
                 <td className="px-5 py-4 font-bold">{patient.patientCode}</td>
                 <td className="px-5 py-4">{patient.fullName}</td>
                 <td className="px-5 py-4">{patient.age} / {patient.gender}</td>
                 <td className="px-5 py-4">{patientScans[0] ? new Date(patientScans[0].createdAt).toLocaleDateString() : "-"}</td>
-                <td className="px-5 py-4">{reports.filter((report) => report.patientId === patient.id).length}</td>
+                <td className="px-5 py-4">{patientReports.length}</td>
                 <td className="px-5 py-4">
-                  <Link href={`/patients/${patient.id}`}>
+                  <Link href={`/patients/${patient.id}?module=${moduleId}`}>
                     <Button variant="secondary">Open</Button>
                   </Link>
                 </td>

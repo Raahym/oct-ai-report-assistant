@@ -862,11 +862,11 @@ export function useDemoStore() {
     const scans = ((scansResult.data ?? []) as DbScan[]).map(mapScan);
     const aiResults = ((aiResultsResult.data ?? []) as DbAiResult[]).map(mapAiResult);
     const reports = ((reportsResult.data ?? []) as DbReport[]).map(mapReport);
-    const scopedPatients = currentProfile.role === "afio_admin" ? patients : patients.filter((patient) => patient.clinicId === currentProfile.clinicId);
+    const scopedPatients = currentProfile.role === "afio_admin" ? [] : patients.filter((patient) => patient.clinicId === currentProfile.clinicId);
     const scopedPatientIds = new Set(scopedPatients.map((patient) => patient.id));
-    const scopedScans = currentProfile.role === "afio_admin" ? scans : scans.filter((scan) => scopedPatientIds.has(scan.patientId) && scan.clinicId === currentProfile.clinicId);
+    const scopedScans = currentProfile.role === "afio_admin" ? [] : scans.filter((scan) => scopedPatientIds.has(scan.patientId) && scan.clinicId === currentProfile.clinicId);
     const scopedScanIds = new Set(scopedScans.map((scan) => scan.id));
-    const scopedReports = currentProfile.role === "afio_admin" ? reports : reports.filter((report) => scopedPatientIds.has(report.patientId) && report.clinicId === currentProfile.clinicId);
+    const scopedReports = currentProfile.role === "afio_admin" ? [] : reports.filter((report) => scopedPatientIds.has(report.patientId) && report.clinicId === currentProfile.clinicId);
 
     setData({
       currentUserId: user.id,
@@ -874,7 +874,7 @@ export function useDemoStore() {
       profiles,
       patients: scopedPatients,
       scans: scopedScans,
-      aiResults: currentProfile.role === "afio_admin" ? aiResults : aiResults.filter((result) => scopedScanIds.has(result.scanId)),
+      aiResults: currentProfile.role === "afio_admin" ? [] : aiResults.filter((result) => scopedScanIds.has(result.scanId)),
       reports: scopedReports,
       auditLogs: ((auditLogsResult.data ?? []) as DbAuditLog[]).map(mapAuditLog)
     });
@@ -1196,7 +1196,7 @@ export function useDemoStore() {
     async addScan(input: { patientId: string; imageUrl: string; eyeSide: EyeSide; scanNotes?: string; file?: File; moduleId?: ModuleId }) {
       const patient = data.patients.find((item) => item.id === input.patientId);
       const moduleId: ModuleId = input.moduleId ?? "oct";
-      const scanType = moduleId === "vkg" ? "VKG" : "OCT";
+      const scanType = moduleId === "vkg" ? "VKG" : moduleId === "retina" ? "RETINA" : moduleId === "corneal" ? "CORNEAL" : "OCT";
       if (mode === "supabase" && supabase && input.file) {
         assertModuleAccess(moduleId);
         if (!patient) throw new Error("Patient not found.");
