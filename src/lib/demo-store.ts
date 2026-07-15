@@ -412,8 +412,8 @@ function normalizeProbabilities(prediction: ClinicalClass) {
   const retinaClasses: ClinicalClass[] = ["NO_DR", "MILD_DR", "MODERATE_DR", "SEVERE_DR", "PROLIFERATIVE_DR"];
   const classes: ClinicalClass[] = retinaClasses.includes(prediction)
     ? retinaClasses
-    : prediction === "KCN" || prediction === "SUSPECT"
-      ? ["NORMAL", "KCN", "SUSPECT"]
+    : prediction === "KCN"
+      ? ["NORMAL", "KCN"]
       : ["CNV", "DME", "DRUSEN", "NORMAL"];
   const others = classes.filter((key) => key !== prediction);
   probabilities[prediction] = confidence;
@@ -1379,7 +1379,7 @@ export function useDemoStore() {
       const classes: ClinicalClass[] = scan.moduleId === "retina"
         ? ["NO_DR", "MILD_DR", "MODERATE_DR", "SEVERE_DR", "PROLIFERATIVE_DR"]
         : scan.moduleId === "vkg"
-          ? ["NORMAL", "KCN", "SUSPECT"]
+          ? ["NORMAL", "KCN"]
           : ["CNV", "DME", "DRUSEN", "NORMAL"];
       const predictedClass = classes[Math.floor(Math.random() * classes.length)];
       const probabilities = normalizeProbabilities(predictedClass);

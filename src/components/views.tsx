@@ -38,7 +38,7 @@ import { supabase } from "@/lib/supabase";
 import type { AiResult, BusinessPermissionKey, BusinessPermissions, ClinicalClass, DiseaseClass, EyeSide, FeedbackEntry, Gender, ModuleId, Patient, Report, Role, Scan } from "@/lib/types";
 
 const diseaseClasses: DiseaseClass[] = ["CNV", "DME", "DRUSEN", "NORMAL"];
-const vkgClasses: ClinicalClass[] = ["NORMAL", "KCN", "SUSPECT"];
+const vkgClasses: ClinicalClass[] = ["NORMAL", "KCN"];
 const retinaClasses: ClinicalClass[] = ["NO_DR", "MILD_DR", "MODERATE_DR", "SEVERE_DR", "PROLIFERATIVE_DR"];
 
 const MIN_PATIENT_AGE = 0;

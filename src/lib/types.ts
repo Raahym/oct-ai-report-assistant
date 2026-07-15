@@ -12,7 +12,7 @@ export type BusinessPermissionKey =
   | "delete_hospitals";
 export type BusinessPermissions = Partial<Record<BusinessPermissionKey, boolean>>;
 export type DiseaseClass = "CNV" | "DME" | "DRUSEN" | "NORMAL";
-export type VkgClass = "NORMAL" | "KCN" | "SUSPECT";
+export type VkgClass = "NORMAL" | "KCN";
 export type RetinaClass = "NO_DR" | "MILD_DR" | "MODERATE_DR" | "SEVERE_DR" | "PROLIFERATIVE_DR";
 export type ClinicalClass = DiseaseClass | VkgClass | RetinaClass;
 export type PredictionClass = ClinicalClass | "INVALID_IMAGE" | "INVALID_OR_UNCERTAIN_IMAGE";
@@ -125,7 +125,6 @@ export function isClinicalClass(value: PredictionClass): value is ClinicalClass 
     value === "DRUSEN" ||
     value === "NORMAL" ||
     value === "KCN" ||
-    value === "SUSPECT" ||
     value === "NO_DR" ||
     value === "MILD_DR" ||
     value === "MODERATE_DR" ||

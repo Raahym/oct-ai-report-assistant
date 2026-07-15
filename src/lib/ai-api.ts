@@ -331,23 +331,25 @@ function normalizeVkgPrediction(prediction: BackendPrediction): BackendPredictio
   const rawProbabilities = prediction.probabilities as Record<string, number>;
   const keratoconus = rawProbabilities.keratoconus ?? rawProbabilities.KCN ?? rawProbabilities.KERATOCONUS_RISK ?? 0;
   const normal = rawProbabilities.non_keratoconus ?? rawProbabilities.NORMAL ?? rawProbabilities.NO_KERATOCONUS_RISK ?? 0;
-  const suspect = rawProbabilities.SUSPECT ?? Math.max(0, 1 - Math.max(keratoconus, normal));
   const rawPrediction = prediction.prediction as string;
   const isValidVkg = prediction.is_valid_corneal ?? prediction.is_valid_oct ?? true;
   const mappedPrediction = rawPrediction === "KERATOCONUS_RISK"
     ? "KCN"
     : rawPrediction === "NO_KERATOCONUS_RISK"
       ? "NORMAL"
-      : prediction.prediction;
+      : rawPrediction === "KCN" || rawPrediction === "NORMAL"
+        ? rawPrediction
+        : keratoconus >= normal
+          ? "KCN"
+          : "NORMAL";
 
-  if (mappedPrediction === "NORMAL" || mappedPrediction === "KCN" || mappedPrediction === "SUSPECT") {
+  if (mappedPrediction === "NORMAL" || mappedPrediction === "KCN") {
     return {
       ...prediction,
       prediction: mappedPrediction,
       probabilities: {
         NORMAL: normal,
         KCN: keratoconus,
-        SUSPECT: suspect,
       },
       is_valid_oct: isValidVkg,
       model_name: prediction.model_name || "VKG Keratoconus Screening Model",
@@ -381,18 +383,16 @@ function normalizeVkgEnsemblePrediction(predictions: BackendPrediction[]): Backe
       return {
         NORMAL: sum.NORMAL + Number(probabilities.NORMAL ?? 0),
         KCN: sum.KCN + Number(probabilities.KCN ?? 0),
-        SUSPECT: sum.SUSPECT + Number(probabilities.SUSPECT ?? 0),
       };
     },
-    { NORMAL: 0, KCN: 0, SUSPECT: 0 }
+    { NORMAL: 0, KCN: 0 }
   );
   const probabilities = {
     NORMAL: Number((probabilitySum.NORMAL / validPredictions.length).toFixed(4)),
     KCN: Number((probabilitySum.KCN / validPredictions.length).toFixed(4)),
-    SUSPECT: Number((probabilitySum.SUSPECT / validPredictions.length).toFixed(4)),
   };
-  const prediction = probabilities.KCN >= 0.5 ? "KCN" : probabilities.SUSPECT >= 0.4 ? "SUSPECT" : "NORMAL";
-  const confidence = prediction === "KCN" ? probabilities.KCN : prediction === "SUSPECT" ? probabilities.SUSPECT : probabilities.NORMAL;
+  const prediction = probabilities.KCN >= probabilities.NORMAL ? "KCN" : "NORMAL";
+  const confidence = prediction === "KCN" ? probabilities.KCN : probabilities.NORMAL;
   const modelNames = normalized.map((item) => item.model_name).filter(Boolean);
   const modelVersions = normalized.map((item) => item.model_version).filter(Boolean);
   const modelsUsed = normalized.flatMap((item) => Array.isArray(item.models_used) ? item.models_used : []);

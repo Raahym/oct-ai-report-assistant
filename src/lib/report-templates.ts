@@ -59,14 +59,6 @@ export const reportTemplates: Record<
     recommendation:
       "Review tomography/topography indices, refraction, visual acuity, slit-lamp findings, and progression history. Consider corneal specialist referral if clinically indicated."
   },
-  SUSPECT: {
-    findings:
-      "The VKG/topography image shows borderline or mixed screening features.",
-    impression:
-      "VKG screening suggests a suspect / borderline corneal topography pattern.",
-    recommendation:
-      "Repeat or verify image quality, compare with prior topography if available, and review clinically before confirming disease or normal status."
-  },
   NO_DR: {
     findings: "The combined fundus screening did not show screening features of diabetic retinopathy. Glaucoma and hypertensive-retinopathy outputs should be reviewed in the result summary.",
     impression: "Fundus screening suggests no diabetic retinopathy.",
@@ -106,7 +98,7 @@ type DbReportTemplate = {
 
 function classesForModule(moduleId: ModuleId): ClinicalClass[] {
   if (moduleId === "retina") return ["NO_DR", "MILD_DR", "MODERATE_DR", "SEVERE_DR", "PROLIFERATIVE_DR"];
-  return moduleId === "vkg" ? ["NORMAL", "KCN", "SUSPECT"] : ["NORMAL", "CNV", "DME", "DRUSEN"];
+  return moduleId === "vkg" ? ["NORMAL", "KCN"] : ["NORMAL", "CNV", "DME", "DRUSEN"];
 }
 
 export function reportClassesForModule(moduleId: ModuleId): ClinicalClass[] {
