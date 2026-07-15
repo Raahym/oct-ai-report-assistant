@@ -849,10 +849,13 @@ export function useDemoStore() {
 
   const loadSupabaseData = async (user: User) => {
     if (!supabase) return;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) throw new Error("Your session expired. Sign in again.");
 
     const [
       hospitalsResult,
-      profilesResult,
+      profilesResponse,
       patientsResult,
       scansResult,
       aiResultsResult,
@@ -860,17 +863,18 @@ export function useDemoStore() {
       auditLogsResult
     ] = await Promise.all([
       supabase.from("clinics").select("*, clinic_modules(module_id,is_enabled)").order("name", { ascending: true }),
-      supabase.from("profiles").select("*").order("created_at", { ascending: false }),
+      fetch("/api/profiles", { headers: { Authorization: `Bearer ${token}` } }),
       supabase.from("patients").select("*").order("created_at", { ascending: false }),
       supabase.from("scans").select("*").order("created_at", { ascending: false }),
       supabase.from("ai_results").select("*").order("created_at", { ascending: false }),
       supabase.from("reports").select("*").order("created_at", { ascending: false }),
       supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(100)
     ]);
+    const profilesPayload = await profilesResponse.json().catch(() => ({}));
+    if (!profilesResponse.ok) throw new Error(profilesPayload.error ?? "Could not load profiles.");
 
     const firstError =
       hospitalsResult.error ??
-      profilesResult.error ??
       patientsResult.error ??
       scansResult.error ??
       aiResultsResult.error ??
@@ -880,7 +884,7 @@ export function useDemoStore() {
     if (firstError) throw firstError;
 
     setMode("supabase");
-    const profiles = mergeCurrentProfile(((profilesResult.data ?? []) as DbProfile[]).map(mapProfile), user);
+    const profiles = mergeCurrentProfile(((profilesPayload.profiles ?? []) as DbProfile[]).map(mapProfile), user);
     const currentProfile = profiles.find((profile) => profile.id === user.id) ?? userProfile(user);
     requireApprovedProfile(currentProfile);
 
