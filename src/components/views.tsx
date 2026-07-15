@@ -3414,7 +3414,7 @@ export function AdminUsersView() {
                     disabled={savingId === profile.id || profile.role === "afio_admin"}
                     onChange={(event) => updateAccess(profile.id, { role: event.target.value as Role })}
                   >
-                    <option value="afio_admin">Business Admin</option>
+                    {store.currentUser.role === "afio_admin" ? <option value="afio_admin">Business Admin</option> : null}
                     <option value="doctor">Doctor</option>
                     <option value="assistant">Assistant</option>
                     <option value="hospital_admin">Hospital Admin</option>

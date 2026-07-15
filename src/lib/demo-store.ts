@@ -1689,19 +1689,25 @@ export function useDemoStore() {
         return;
       }
 
-      const updates: { role?: Role; is_active?: boolean } = {};
-      if (input.role) updates.role = input.role;
-      if (typeof input.isActive === "boolean") updates.is_active = input.isActive;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("Your admin session expired. Sign in again.");
 
-      const { data: row, error } = await supabase
-        .from("profiles")
-        .update(updates)
-        .eq("id", profileId)
-        .select("*")
-        .single();
+      const response = await fetch(`/api/profiles/${profileId}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          role: input.role,
+          is_active: input.isActive
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "Could not update user access.");
 
-      if (error) throw new Error(error.message);
-      const saved = mapProfile(row as DbProfile);
+      const saved = mapProfile(payload.profile as DbProfile);
       setData((current) => ({
         ...current,
         profiles: current.profiles.map((profile) => (profile.id === saved.id ? saved : profile))
