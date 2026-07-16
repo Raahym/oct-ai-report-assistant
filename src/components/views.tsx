@@ -275,6 +275,138 @@ function moduleFromSearchParams(searchParams: ReturnType<typeof useSearchParams>
   return moduleId === "vkg" || moduleId === "retina" || moduleId === "corneal" ? moduleId : "oct";
 }
 
+function ClinicalStatsPanel({ moduleId }: { moduleId: ModuleId }) {
+  const store = useDemoStore();
+  const [range, setRange] = useState<"7d" | "30d" | "all">("30d");
+  const moduleLabel = getModuleLabel(moduleId);
+  const now = Date.now();
+  const rangeStart = range === "all" ? 0 : now - (range === "7d" ? 7 : 30) * 24 * 60 * 60 * 1000;
+  const inRange = (date: string) => range === "all" || new Date(date).getTime() >= rangeStart;
+  const scans = store.data.scans.filter((scan) => (scan.moduleId ?? "oct") === moduleId && inRange(scan.createdAt));
+  const reports = store.data.reports.filter((report) => (report.moduleId ?? "oct") === moduleId && inRange(report.createdAt));
+  const aiResults = store.data.aiResults.filter((result) => (result.moduleId ?? "oct") === moduleId && inRange(result.createdAt));
+  const patientIds = new Set(scans.map((scan) => scan.patientId));
+  const patients = store.data.patients.filter((patient) => (patient.moduleId === moduleId || patientIds.has(patient.id)) && inRange(patient.createdAt));
+  const approved = reports.filter((report) => report.status === "approved").length;
+  const pending = reports.filter((report) => report.status !== "approved").length;
+  const averageConfidence = aiResults.length ? Math.round((aiResults.reduce((sum, result) => sum + result.confidence, 0) / aiResults.length) * 100) : 0;
+  const heatmapRate = aiResults.length ? Math.round((aiResults.filter((result) => result.heatmapUrl).length / aiResults.length) * 100) : 0;
+  const classCounts = aiResults.reduce<Record<string, number>>((acc, result) => {
+    acc[result.predictedClass] = (acc[result.predictedClass] ?? 0) + 1;
+    return acc;
+  }, {});
+  const maxClassCount = Math.max(1, ...Object.values(classCounts));
+  const eyeCounts = scans.reduce<Record<string, number>>((acc, scan) => {
+    acc[scan.eyeSide] = (acc[scan.eyeSide] ?? 0) + 1;
+    return acc;
+  }, {});
+  const days = range === "7d" ? 7 : range === "30d" ? 30 : 12;
+  const timeline = Array.from({ length: days }, (_, index) => {
+    if (range === "all") {
+      const date = new Date();
+      date.setMonth(date.getMonth() - (days - 1 - index));
+      const key = date.toISOString().slice(0, 7);
+      return { label: date.toLocaleString(undefined, { month: "short" }), count: scans.filter((scan) => scan.createdAt.startsWith(key)).length };
+    }
+    const date = new Date(now - (days - 1 - index) * 24 * 60 * 60 * 1000);
+    const key = date.toISOString().slice(0, 10);
+    return { label: date.toLocaleString(undefined, { day: "numeric", month: "short" }), count: scans.filter((scan) => scan.createdAt.startsWith(key)).length };
+  });
+  const maxTimelineCount = Math.max(1, ...timeline.map((item) => item.count));
+
+  return (
+    <Card className="mt-5 p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <CardHeader title={`${moduleLabel} Visualization`} subtitle="Filtered patient volume, screening activity, report status, and model output trends." />
+        <div className="flex rounded-md border border-slate-200 bg-slate-50 p-1">
+          {(["7d", "30d", "all"] as const).map((item) => (
+            <button
+              key={item}
+              type="button"
+              className={`rounded px-3 py-1.5 text-xs font-black ${range === item ? "bg-white text-clinic-700 shadow-sm" : "text-slate-500"}`}
+              onClick={() => setRange(item)}
+            >
+              {item === "7d" ? "Week" : item === "30d" ? "Month" : "All"}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        {[
+          ["Patients", patients.length],
+          ["Scans", scans.length],
+          ["AI results", aiResults.length],
+          ["Approved", approved],
+          ["Pending", pending],
+          ["Avg confidence", `${averageConfidence}%`]
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p>
+            <p className="mt-2 text-2xl font-black text-slate-950">{value}</p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="font-black text-slate-950">Screenings over time</p>
+          <div className="mt-4 flex h-44 items-end gap-2">
+            {timeline.map((item) => (
+              <div key={item.label} className="flex flex-1 flex-col items-center gap-2">
+                <div className="flex h-32 w-full items-end rounded bg-slate-100">
+                  <div className="w-full rounded bg-clinic-500 transition-all" style={{ height: `${Math.max(6, (item.count / maxTimelineCount) * 100)}%` }} />
+                </div>
+                <span className="text-[10px] font-bold text-slate-500">{item.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="font-black text-slate-950">Output mix</p>
+          <div className="mt-4 space-y-3">
+            {Object.entries(classCounts).length ? Object.entries(classCounts).map(([label, value]) => (
+              <div key={label}>
+                <div className="flex justify-between text-xs font-bold text-slate-600">
+                  <span>{label}</span>
+                  <span>{value}</span>
+                </div>
+                <div className="mt-1 h-2 rounded-full bg-slate-100">
+                  <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${(value / maxClassCount) * 100}%` }} />
+                </div>
+              </div>
+            )) : <p className="text-sm font-semibold text-slate-500">No AI outputs in this filter yet.</p>}
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <Info label="OD / Right" value={String(eyeCounts.Right ?? 0)} />
+            <Info label="OS / Left" value={String(eyeCounts.Left ?? 0)} />
+            <Info label="Grad-CAM coverage" value={`${heatmapRate}%`} />
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function nextPatientCode(moduleId: ModuleId, patients: Patient[]) {
+  const prefix = `MCS-${moduleId.toUpperCase()}-`;
+  const max = patients
+    .filter((patient) => (patient.moduleId ?? moduleId) === moduleId && patient.patientCode.startsWith(prefix))
+    .map((patient) => Number(patient.patientCode.slice(prefix.length)))
+    .filter((value) => Number.isFinite(value))
+    .reduce((highest, value) => Math.max(highest, value), 0);
+  return `${prefix}${String(max + 1).padStart(4, "0")}`;
+}
+
+type AnalysisStepStatus = "idle" | "active" | "done" | "error";
+
+const defaultAnalysisSteps: Array<{ key: string; label: string }> = [
+  { key: "patient", label: "Patient ready" },
+  { key: "image", label: "Image processed" },
+  { key: "scan", label: "Scan saved" },
+  { key: "ai", label: "AI screening done" },
+  { key: "gradcam", label: "Grad-CAM checked" },
+  { key: "report", label: "Draft report ready" }
+];
+
 function isModuleId(value?: string | null): value is ModuleId {
   return value === "oct" || value === "vkg" || value === "retina" || value === "corneal";
 }
@@ -1088,6 +1220,7 @@ export function OctModuleView() {
           <ReportRows reports={octReports.slice(0, 5)} />
         </Card>
       </div>
+      <ClinicalStatsPanel moduleId="oct" />
     </>
   );
 }
@@ -1166,6 +1299,7 @@ export function VkgModuleView() {
           <ReportRows reports={vkgReports.slice(0, 5)} />
         </Card>
       </div>
+      <ClinicalStatsPanel moduleId="vkg" />
     </>
   );
 }
@@ -1298,6 +1432,7 @@ export function RetinaModuleView() {
           <ReportRows reports={retinaReports.slice(0, 5)} />
         </Card>
       </div>
+      <ClinicalStatsPanel moduleId="retina" />
     </>
   );
 }
@@ -1869,7 +2004,7 @@ export function NewPatientView() {
   const [success, setSuccess] = useState("");
   const [createdPatient, setCreatedPatient] = useState<Patient | null>(null);
   const [form, setForm] = useState({
-    patientCode: `MCS-${moduleId.toUpperCase()}-${String(store.data.patients.length + 1).padStart(4, "0")}`,
+    patientCode: nextPatientCode(moduleId, store.data.patients),
     cnic: "",
     fullName: "",
     age: "",
@@ -1886,7 +2021,6 @@ export function NewPatientView() {
     setError("");
     setSuccess("");
     const missingFields = [
-      !form.patientCode.trim() ? "patient ID" : "",
       !form.cnic.trim() ? "CNIC" : "",
       !form.fullName.trim() ? "name" : "",
       !form.age.trim() ? "age" : "",
@@ -1905,7 +2039,7 @@ export function NewPatientView() {
       return;
     }
     try {
-      const patient = await store.createPatient({ ...form, cnic: formatCnic(form.cnic), age: Number(form.age), moduleId });
+      const patient = await store.createPatient({ ...form, patientCode: nextPatientCode(moduleId, store.data.patients), cnic: formatCnic(form.cnic), age: Number(form.age), moduleId });
       const password = getPatientCurrentAccessPassword(patient);
       if (patient.email) {
         const result = await sendReportAccessEmail({
@@ -1915,9 +2049,9 @@ export function NewPatientView() {
           password,
           mode: "patient-created"
         });
-        setSuccess(result.message);
+        setSuccess(`Patient registered successfully. ${result.message}`);
       } else {
-        setSuccess(`Patient saved. No email was entered, so share Access ID ${getPatientAccessId(patient)} and password ${password} manually.`);
+        setSuccess(`Patient registered successfully. No email was entered, so share Access ID ${getPatientAccessId(patient)} and password ${password} manually.`);
       }
       setCreatedPatient(patient);
     } catch (err) {
@@ -1930,7 +2064,7 @@ export function NewPatientView() {
       <PageTitle title={`New ${activeModuleLabel} Patient`} subtitle={`Create a patient record inside the ${activeModuleLabel} workflow before uploading an image.`} />
       <Card className="p-5">
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Patient ID / MR Number" value={form.patientCode} onChange={(value) => setForm({ ...form, patientCode: value })} />
+          <Field label="Patient ID / MR Number" value={form.patientCode} readOnly helper="Auto-generated by AFIO and locked to prevent duplicate MR numbers." onChange={() => undefined} />
           <Field label="CNIC" value={form.cnic} placeholder="61101-2910291-3" maxLength={15} onChange={(value) => setForm({ ...form, cnic: formatCnic(value) })} />
           <Field label="Full name" value={form.fullName} onChange={(value) => setForm({ ...form, fullName: value })} />
           <Field label="Age" type="number" min={MIN_PATIENT_AGE} max={MAX_PATIENT_AGE} value={form.age} onChange={(value) => setForm({ ...form, age: cleanAgeInput(value) })} />
@@ -2132,7 +2266,7 @@ export function PatientProfileView({ id }: { id: string }) {
             </>
           ) : (
             <div className="mt-4 grid gap-4">
-              <Field label="Patient ID / MR Number" value={form.patientCode} onChange={(value) => setForm({ ...form, patientCode: value })} />
+              <Field label="Patient ID / MR Number" value={form.patientCode} readOnly helper="Patient IDs are auto-assigned and cannot be edited." onChange={() => undefined} />
               <Field label="CNIC" value={form.cnic} placeholder="61101-2910291-3" maxLength={15} onChange={(value) => setForm({ ...form, cnic: formatCnic(value) })} />
               <Field label="Full name" value={form.fullName} onChange={(value) => setForm({ ...form, fullName: value })} />
               <Field label="Age" type="number" min={MIN_PATIENT_AGE} max={MAX_PATIENT_AGE} value={form.age} onChange={(value) => setForm({ ...form, age: cleanAgeInput(value) })} />
@@ -2207,19 +2341,36 @@ export function UploadScanView() {
   const moduleLabel = getModuleLabel(moduleId);
   const modulePatients = filterPatientsForModule(store.data.patients, store.data.scans, moduleId);
   const requestedPatientId = searchParams.get("patient") ?? "";
+  const [patientMode, setPatientMode] = useState<"existing" | "new">(requestedPatientId ? "existing" : "new");
   const [patientId, setPatientId] = useState(requestedPatientId);
-  const [eyeSide, setEyeSide] = useState<EyeSide>("Unknown");
+  const [eyeSide, setEyeSide] = useState<EyeSide>("Right");
   const [scanNotes, setScanNotes] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [predictionFile, setPredictionFile] = useState<File | null>(null);
+  const [eyeUploads, setEyeUploads] = useState<Record<"Right" | "Left", { imageUrl: string; selectedFile: File | null; predictionFile: File | null; fileNote: string }>>({
+    Right: { imageUrl: "", selectedFile: null, predictionFile: null, fileNote: "" },
+    Left: { imageUrl: "", selectedFile: null, predictionFile: null, fileNote: "" }
+  });
+  const [newPatient, setNewPatient] = useState({
+    patientCode: nextPatientCode(moduleId, store.data.patients),
+    cnic: "",
+    fullName: "",
+    age: "",
+    gender: "Female" as Gender,
+    phone: "",
+    email: "",
+    address: "",
+    diabetesHistory: "Unknown" as Patient["diabetesHistory"],
+    previousEyeDisease: "",
+    clinicalNotes: ""
+  });
   const [error, setError] = useState("");
   const [analysisWarning, setAnalysisWarning] = useState("");
-  const [fileNote, setFileNote] = useState("");
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState<Record<string, AnalysisStepStatus>>({});
   const [retinaServices, setRetinaServices] = useState<RetinaServiceSelection>({ dr: true, glaucoma: true, hr: true });
+  const selectedEyes: Array<"Right" | "Left"> = eyeSide === "Both" ? ["Right", "Left"] : eyeSide === "Left" ? ["Left"] : ["Right"];
+  const setStep = (key: string, status: AnalysisStepStatus) => setProgress((current) => ({ ...current, [key]: status }));
 
-  const onFile = async (file?: File) => {
+  const onFile = async (side: "Right" | "Left", file?: File) => {
     if (!file) return;
     if (!["image/jpeg", "image/png"].includes(file.type)) {
       setError(`Only JPG, JPEG, and PNG ${moduleLabel} images are supported.`);
@@ -2227,32 +2378,70 @@ export function UploadScanView() {
     }
     setError("");
     setAnalysisWarning("");
-    setFileNote("");
     try {
       const prepared = await prepareScanImages(file);
-      setSelectedFile(prepared.storageFile);
-      setPredictionFile(prepared.predictionFile);
+      let fileNote = "";
       if (prepared.storageFile.size < prepared.originalSize || prepared.predictionFile.size < prepared.originalSize) {
-        setFileNote(
-          `Optimized image for faster analysis: ${(prepared.originalSize / 1024 / 1024).toFixed(1)} MB -> ${(prepared.predictionSize / 1024 / 1024).toFixed(1)} MB.`
-        );
+        fileNote = `Optimized: ${(prepared.originalSize / 1024 / 1024).toFixed(1)} MB -> ${(prepared.predictionSize / 1024 / 1024).toFixed(1)} MB.`;
       }
       const reader = new FileReader();
-      reader.onload = () => setImageUrl(String(reader.result));
+      reader.onload = () => {
+        setEyeUploads((current) => ({
+          ...current,
+          [side]: { imageUrl: String(reader.result), selectedFile: prepared.storageFile, predictionFile: prepared.predictionFile, fileNote }
+        }));
+        setStep("image", "done");
+      };
       reader.readAsDataURL(prepared.storageFile);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not prepare the selected image.");
-      setSelectedFile(null);
-      setPredictionFile(null);
-      setImageUrl("");
+      setEyeUploads((current) => ({ ...current, [side]: { imageUrl: "", selectedFile: null, predictionFile: null, fileNote: "" } }));
     }
+  };
+
+  const ensurePatient = async () => {
+    if (patientMode === "existing") {
+      if (!patientId) throw new Error(`Select an existing ${moduleLabel} patient or switch to quick registration.`);
+      setStep("patient", "done");
+      return patientId;
+    }
+    const missingFields = [
+      !newPatient.cnic.trim() ? "CNIC" : "",
+      !newPatient.fullName.trim() ? "name" : "",
+      !newPatient.age.trim() ? "age" : ""
+    ].filter(Boolean);
+    if (missingFields.length) throw new Error(`Please enter ${missingFields.join(", ")}.`);
+    if (!isValidCnic(newPatient.cnic)) throw new Error("Please enter a valid 13-digit CNIC.");
+    if (!isValidPatientAge(newPatient.age)) throw new Error("Please enter a valid age from 0 to 130.");
+    setStep("patient", "active");
+    const patient = await store.createPatient({
+      ...newPatient,
+      patientCode: nextPatientCode(moduleId, store.data.patients),
+      cnic: formatCnic(newPatient.cnic),
+      age: Number(newPatient.age),
+      moduleId
+    });
+    setPatientId(patient.id);
+    setStep("patient", "done");
+    return patient.id;
+  };
+
+  const runPrediction = async (file: File) => {
+    const preparedAgain = await prepareScanImages(file);
+    return moduleId === "retina"
+      ? predictRetina(preparedAgain.predictionFile, { services: retinaServices, imageQualityWarnings: preparedAgain.quality.warnings })
+      : moduleId === "vkg"
+        ? predictVKG(file)
+        : predictOCTWithGradcam(file);
   };
 
   const submit = async () => {
     setError("");
     setAnalysisWarning("");
-    if (!patientId || !imageUrl || !selectedFile || !predictionFile) {
-      setError(`Please select a patient and upload a ${moduleLabel} image.`);
+    setProgress({});
+    const missingEye = selectedEyes.find((side) => !eyeUploads[side].imageUrl || !eyeUploads[side].selectedFile || !eyeUploads[side].predictionFile);
+    if (missingEye) {
+      setError(`Please upload the ${missingEye === "Right" ? "OD / right" : "OS / left"} ${moduleLabel} image.`);
       return;
     }
     setLoading(true);
@@ -2260,26 +2449,37 @@ export function UploadScanView() {
       if (moduleId === "corneal") {
         throw new Error(`${moduleLabel} screening backend is not connected yet. Use this module workspace for patient setup until the service is live.`);
       }
-      const preparedAgain = await prepareScanImages(predictionFile);
-      const prediction = moduleId === "retina"
-        ? await predictRetina(preparedAgain.predictionFile, { services: retinaServices, imageQualityWarnings: preparedAgain.quality.warnings })
-        : moduleId === "vkg"
-          ? await predictVKG(predictionFile)
-          : await predictOCTWithGradcam(predictionFile);
-      if (!prediction.is_valid_oct) {
-        const message =
-          prediction.prediction === "INVALID_IMAGE"
-            ? `Invalid image uploaded. Please upload a valid ${moduleLabel} scan.`
-            : "Low-confidence result. The scan could not be classified confidently and requires doctor review.";
-        setAnalysisWarning(`${message} ${prediction.disclaimer}`);
-        return;
+      const readyPatientId = await ensurePatient();
+      let firstScanId = "";
+      for (const side of selectedEyes) {
+        const upload = eyeUploads[side];
+        if (!upload.selectedFile || !upload.predictionFile) continue;
+        setStep("image", "done");
+        setStep("scan", "active");
+        const scan = await store.addScan({ patientId: readyPatientId, imageUrl: upload.imageUrl, eyeSide: side, scanNotes, file: upload.selectedFile, moduleId });
+        firstScanId ||= scan.id;
+        setStep("scan", "done");
+        setStep("ai", "active");
+        const prediction = await runPrediction(upload.predictionFile);
+        if (!prediction.is_valid_oct) {
+          const message =
+            prediction.prediction === "INVALID_IMAGE"
+              ? `Invalid ${side} image uploaded. Please upload a valid ${moduleLabel} scan.`
+              : `${side} image returned a low-confidence result and requires doctor review.`;
+          setAnalysisWarning(`${message} ${prediction.disclaimer}`);
+          setStep("ai", "error");
+          return;
+        }
+        const aiResult = await store.saveBackendAnalysis(scan, prediction);
+        setStep("ai", "done");
+        setStep("gradcam", prediction.gradcam_overlay_base64 || (prediction as { heatmap?: string | null }).heatmap ? "done" : "done");
+        setStep("report", "active");
+        await store.createReport(scan, aiResult);
+        setStep("report", "done");
       }
-
-      const scan = await store.addScan({ patientId, imageUrl, eyeSide, scanNotes, file: selectedFile, moduleId });
-      const aiResult = await store.saveBackendAnalysis(scan, prediction);
-      await store.createReport(scan, aiResult);
-      router.push(`/scans/${scan.id}/analysis`);
+      if (firstScanId) router.push(`/scans/${firstScanId}/analysis`);
     } catch (err) {
+      setStep("ai", "error");
       setError(err instanceof Error ? err.message : "Screening failed.");
     } finally {
       setLoading(false);
@@ -2288,30 +2488,62 @@ export function UploadScanView() {
 
   return (
     <>
-      <PageTitle title={`Upload ${moduleLabel} Scan`} subtitle={`Upload a patient ${moduleLabel} image for screening and draft report preparation.`} />
+      <PageTitle title={`${moduleLabel} Guided Screening`} subtitle="Register or select the patient, upload one or both eyes, and generate analysis plus draft report from one screen." />
       <div className="grid gap-5 lg:grid-cols-[1fr_420px]">
         <Card className="p-5">
-          <div className="grid gap-4 md:grid-cols-2">
-            <SelectField
-              label="Patient"
-              value={patientId}
-              options={["", ...modulePatients.map((patient) => patient.id)]}
-              optionLabels={{ "": `Select ${moduleLabel} patient`, ...Object.fromEntries(modulePatients.map((patient) => [patient.id, `${patient.patientCode} - ${patient.fullName}`])) }}
-              onChange={setPatientId}
-            />
-            <SelectField label="Eye side" value={eyeSide} options={["Left", "Right", "Both", "Unknown"]} onChange={(value) => setEyeSide(value as EyeSide)} />
+          <div className="rounded-xl border border-clinic-100 bg-clinic-50 p-4">
+            <p className="text-xs font-black uppercase tracking-wide text-clinic-700">Step 1</p>
+            <h3 className="mt-1 font-black text-slate-950">Patient</h3>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <button type="button" className={`rounded-md border p-3 text-left text-sm font-bold ${patientMode === "new" ? "border-clinic-300 bg-white text-clinic-800" : "border-slate-200 bg-slate-50 text-slate-600"}`} onClick={() => setPatientMode("new")}>Quick register new patient</button>
+              <button type="button" className={`rounded-md border p-3 text-left text-sm font-bold ${patientMode === "existing" ? "border-clinic-300 bg-white text-clinic-800" : "border-slate-200 bg-slate-50 text-slate-600"}`} onClick={() => setPatientMode("existing")}>Use existing patient</button>
+            </div>
+            {patientMode === "existing" ? (
+              <div className="mt-4">
+                <SelectField
+                  label="Patient"
+                  value={patientId}
+                  options={["", ...modulePatients.map((patient) => patient.id)]}
+                  optionLabels={{ "": `Select ${moduleLabel} patient`, ...Object.fromEntries(modulePatients.map((patient) => [patient.id, `${patient.patientCode} - ${patient.fullName}`])) }}
+                  onChange={setPatientId}
+                />
+              </div>
+            ) : (
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <Field label="Patient ID / MR Number" value={newPatient.patientCode} readOnly helper="Auto-generated and locked." onChange={() => undefined} />
+                <Field label="CNIC" value={newPatient.cnic} placeholder="61101-2910291-3" maxLength={15} onChange={(value) => setNewPatient({ ...newPatient, cnic: formatCnic(value) })} />
+                <Field label="Full name" value={newPatient.fullName} onChange={(value) => setNewPatient({ ...newPatient, fullName: value })} />
+                <Field label="Age" type="number" min={MIN_PATIENT_AGE} max={MAX_PATIENT_AGE} value={newPatient.age} onChange={(value) => setNewPatient({ ...newPatient, age: cleanAgeInput(value) })} />
+                <SelectField label="Gender" value={newPatient.gender} options={["Female", "Male", "Other"]} onChange={(value) => setNewPatient({ ...newPatient, gender: value as Gender })} />
+                <Field label="Phone number" value={newPatient.phone} onChange={(value) => setNewPatient({ ...newPatient, phone: value })} />
+                <Field label="Email" value={newPatient.email} onChange={(value) => setNewPatient({ ...newPatient, email: value })} />
+                <SelectField label="Diabetes history" value={newPatient.diabetesHistory} options={["Yes", "No", "Unknown"]} onChange={(value) => setNewPatient({ ...newPatient, diabetesHistory: value as Patient["diabetesHistory"] })} />
+              </div>
+            )}
           </div>
-          <Textarea label="Scan notes" value={scanNotes} onChange={setScanNotes} />
-          {moduleId === "retina" ? <div className="mt-4"><RetinaServiceSelector value={retinaServices} onChange={setRetinaServices} disabled={loading} /></div> : null}
-          <label className="mt-4 flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 px-5 py-12 text-center hover:border-clinic-300">
-            <Upload className="text-clinic-600" size={28} />
-            <span className="mt-3 font-bold text-slate-900">Upload {moduleLabel} image</span>
-            <span className="text-sm text-slate-500">JPG, JPEG, or PNG</span>
-            <input className="hidden" type="file" accept=".jpg,.jpeg,.png" onChange={(event) => onFile(event.target.files?.[0])} />
-          </label>
+          <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
+            <p className="text-xs font-black uppercase tracking-wide text-clinic-700">Step 2</p>
+            <h3 className="mt-1 font-black text-slate-950">Eye images</h3>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <SelectField label="Eye selection" value={eyeSide} options={["Right", "Left", "Both"]} optionLabels={{ Right: "OD / Right", Left: "OS / Left", Both: "Both eyes" }} onChange={(value) => setEyeSide(value as EyeSide)} />
+              <Textarea label="Scan notes" value={scanNotes} onChange={setScanNotes} />
+            </div>
+            {moduleId === "retina" ? <div className="mt-4"><RetinaServiceSelector value={retinaServices} onChange={setRetinaServices} disabled={loading} /></div> : null}
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              {selectedEyes.map((side) => (
+                <label key={side} className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center hover:border-clinic-300">
+                  <Upload className="text-clinic-600" size={28} />
+                  <span className="mt-3 font-bold text-slate-900">Upload {side === "Right" ? "OD / Right" : "OS / Left"}</span>
+                  <span className="text-sm text-slate-500">JPG, JPEG, or PNG</span>
+                  <input className="hidden" type="file" accept=".jpg,.jpeg,.png" onChange={(event) => onFile(side, event.target.files?.[0])} />
+                  {eyeUploads[side].fileNote ? <span className="mt-2 text-xs font-semibold text-blue-700">{eyeUploads[side].fileNote}</span> : null}
+                </label>
+              ))}
+            </div>
+          </div>
           {error ? <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
-          {fileNote ? <p className="mt-4 rounded-md bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800">{fileNote}</p> : null}
           {analysisWarning ? <p className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">{analysisWarning}</p> : null}
+          <AnalysisProgress steps={defaultAnalysisSteps} progress={progress} />
           <div className="mt-5 flex justify-end">
             <Button className="w-full sm:w-auto" onClick={submit} disabled={loading}>
               {loading ? <Loader2 className="animate-spin" size={16} /> : <Wand2 size={16} />}
@@ -2321,16 +2553,48 @@ export function UploadScanView() {
         </Card>
         <Card className="p-5">
           <h3 className="font-black text-slate-950">Image Preview</h3>
-          {imageUrl ? (
-            <img src={imageUrl} alt={`Uploaded ${moduleLabel} preview`} className="mt-4 aspect-[4/3] w-full rounded-md border border-slate-200 object-cover" />
-          ) : (
-            <div className="mt-4">
-              <EmptyState title="No image selected" body={`The ${moduleLabel} preview appears here before upload.`} />
-            </div>
-          )}
+          <div className="mt-4 grid gap-4">
+            {selectedEyes.map((side) => eyeUploads[side].imageUrl ? (
+              <div key={side}>
+                <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">{side === "Right" ? "OD / Right" : "OS / Left"}</p>
+                <img src={eyeUploads[side].imageUrl} alt={`${side} ${moduleLabel} preview`} className="aspect-[4/3] w-full rounded-md border border-slate-200 object-cover" />
+              </div>
+            ) : null)}
+            {selectedEyes.every((side) => !eyeUploads[side].imageUrl) ? <EmptyState title="No image selected" body={`The ${moduleLabel} preview appears here before upload.`} /> : null}
+          </div>
         </Card>
       </div>
     </>
+  );
+}
+
+function AnalysisProgress({ steps, progress }: { steps: Array<{ key: string; label: string }>; progress: Record<string, AnalysisStepStatus> }) {
+  const hasProgress = steps.some((step) => progress[step.key]);
+  if (!hasProgress) return null;
+
+  return (
+    <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <p className="text-sm font-black text-slate-950">Screening progress</p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {steps.map((step) => {
+          const status = progress[step.key] ?? "idle";
+          const classes =
+            status === "done"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : status === "active"
+                ? "border-blue-200 bg-blue-50 text-blue-800"
+                : status === "error"
+                  ? "border-red-200 bg-red-50 text-red-700"
+                  : "border-slate-200 bg-white text-slate-500";
+          return (
+            <div key={step.key} className={`flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-black ${classes}`}>
+              {status === "active" ? <Loader2 className="animate-spin" size={14} /> : status === "done" ? <CheckCircle2 size={14} /> : <span className="h-3.5 w-3.5 rounded-full border border-current" />}
+              <span>{step.label}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -2348,6 +2612,7 @@ export function AnalysisView({ id }: { id: string }) {
   const patient = store.data.patients.find((item) => item.id === scan.patientId);
   const aiResult = store.data.aiResults.find((item) => item.scanId === scan.id);
   const linkedReport = aiResult ? store.data.reports.find((report) => report.aiResultId === aiResult.id) : undefined;
+  const approver = linkedReport?.approvedBy ? store.data.profiles.find((item) => item.id === linkedReport.approvedBy) : undefined;
   const canManageAnalysis = store.currentUser.role === "doctor" || store.currentUser.role === "hospital_admin" || store.currentUser.role === "admin";
   const canManageScan = canManageAnalysis;
   const analysisClasses = scan.moduleId === "retina" ? retinaClasses : scan.moduleId === "vkg" ? vkgClasses : diseaseClasses;
@@ -2438,15 +2703,43 @@ export function AnalysisView({ id }: { id: string }) {
         title="Screening Result"
         subtitle={patient ? `${patient.patientCode} - ${patient.fullName}` : "OCT scan analysis"}
         action={
-          <Button className="w-full" onClick={generate} disabled={generatingReport || analysisLoading}>
-            {generatingReport ? <Loader2 className="animate-spin" size={16} /> : <FileText size={16} />}
-            {generatingReport ? (aiResult || linkedReport ? "Opening report..." : "Generating report...") : linkedReport ? "Open Report" : "Generate Report"}
-          </Button>
+          <div className="grid gap-2 sm:flex">
+            <Button className="w-full sm:w-auto" onClick={generate} disabled={generatingReport || analysisLoading}>
+              {generatingReport ? <Loader2 className="animate-spin" size={16} /> : <FileText size={16} />}
+              {generatingReport ? (aiResult || linkedReport ? "Opening report..." : "Generating report...") : linkedReport ? "Open Report" : "Generate Report"}
+            </Button>
+            {linkedReport ? (
+              <Link href={`/reports/${linkedReport.id}/edit`} className="block">
+                <Button className="w-full sm:w-auto" variant="secondary">
+                  <Edit3 size={16} />
+                  Edit PDF Report
+                </Button>
+              </Link>
+            ) : null}
+            {patient && aiResult && linkedReport ? (
+              <Button className="w-full sm:w-auto" variant="secondary" onClick={() => downloadReportPdf({ patient, scan, aiResult, report: linkedReport, approver })}>
+                <Download size={16} />
+                Download PDF
+              </Button>
+            ) : null}
+          </div>
         }
       />
       <div className="grid gap-5 lg:grid-cols-[minmax(360px,.95fr)_minmax(560px,1.05fr)]">
         <Card className="p-5">
-          <img src={scan.imageUrl} alt="OCT scan" className="aspect-[4/3] w-full rounded-md bg-slate-900 object-cover" />
+          <div className={aiResult?.heatmapUrl ? "grid gap-4 xl:grid-cols-2" : ""}>
+            <div>
+              <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Original image</p>
+              <img src={scan.imageUrl} alt="OCT scan" className="aspect-[4/3] w-full rounded-md bg-slate-900 object-cover" />
+            </div>
+            {aiResult?.heatmapUrl ? (
+              <div>
+                <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Grad-CAM overlay</p>
+                <img src={imageDisplaySource(aiResult.heatmapUrl)} alt="Grad-CAM heatmap overlay" className="aspect-[4/3] w-full rounded-md bg-slate-900 object-cover" />
+                <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500">Attention overlay for quick comparison. Not a segmentation map.</p>
+              </div>
+            ) : null}
+          </div>
           <ScanImageActions
             scan={scan}
             patientCode={patient?.patientCode}
@@ -2481,15 +2774,6 @@ export function AnalysisView({ id }: { id: string }) {
                   </div>
                 </>
               )}
-              {aiResult.heatmapUrl ? (
-                <div className="rounded-md border border-slate-200 bg-white p-3">
-                  <p className="text-sm font-black text-slate-950">Grad-CAM attention heatmap</p>
-                  <img src={imageDisplaySource(aiResult.heatmapUrl)} alt="Grad-CAM heatmap overlay" className="mt-3 aspect-[4/3] w-full rounded-md bg-slate-900 object-cover" />
-                  <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500">
-                    Highlighted regions influenced the screening result. This is not a segmentation map or measurement.
-                  </p>
-                </div>
-              ) : null}
               <CleanModelVersion aiResult={aiResult} />
               <Info label="Timestamp" value={new Date(aiResult.createdAt).toLocaleString()} />
               {scan.moduleId === "retina" ? <RetinaServiceSelector value={retinaServices} onChange={setRetinaServices} disabled={analysisLoading} /> : null}
@@ -2562,6 +2846,7 @@ export function ReportEditorView({ id }: { id: string }) {
   const canApprove = store.currentUser.role === "doctor";
   const canManageScan = store.currentUser.role === "doctor" || store.currentUser.role === "hospital_admin" || store.currentUser.role === "admin";
   const patientAccessId = patient ? getPatientAccessId(patient) : "";
+  const approver = draft.approvedBy ? store.data.profiles.find((item) => item.id === draft.approvedBy) : undefined;
 
   const save = async (status: Report["status"] = draft.status) => {
     const next = { ...draft, status };
@@ -2688,6 +2973,12 @@ export function ReportEditorView({ id }: { id: string }) {
           {saved ? <p className="mt-4 rounded-md bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">Draft saved.</p> : null}
           {accessMessage ? <p className="mt-4 rounded-md bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800">{accessMessage}</p> : null}
           <div className="mt-5 grid gap-2 sm:flex sm:flex-wrap sm:justify-end">
+            {patient && scan && ai ? (
+              <Button className="w-full sm:w-auto" variant="secondary" onClick={() => downloadReportPdf({ patient, scan, aiResult: ai, report: draft, approver })}>
+                <Download size={16} />
+                Download PDF
+              </Button>
+            ) : null}
             <Button className="w-full sm:w-auto" variant="secondary" onClick={() => save("draft")}>
               <Save size={16} />
               Save Draft
@@ -3986,7 +4277,9 @@ function Field({
   min,
   max,
   maxLength,
-  placeholder
+  placeholder,
+  readOnly = false,
+  helper
 }: {
   label: string;
   value: string;
@@ -3995,12 +4288,25 @@ function Field({
   max?: number;
   maxLength?: number;
   placeholder?: string;
+  readOnly?: boolean;
+  helper?: string;
   onChange: (value: string) => void;
 }) {
   return (
     <label className="block">
       <span className="label">{label}</span>
-      <input className="field mt-1" type={type} min={min} max={max} maxLength={maxLength} placeholder={placeholder} value={value} onChange={(event) => onChange(event.target.value)} />
+      <input
+        className={`field mt-1 ${readOnly ? "cursor-not-allowed bg-slate-100 font-bold text-slate-600" : ""}`}
+        type={type}
+        min={min}
+        max={max}
+        maxLength={maxLength}
+        placeholder={placeholder}
+        value={value}
+        readOnly={readOnly}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      {helper ? <span className="mt-1 block text-xs font-semibold text-slate-500">{helper}</span> : null}
     </label>
   );
 }

@@ -8,6 +8,8 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardList,
+  ChevronsLeft,
+  ChevronsRight,
   FileText,
   Inbox,
   KeyRound,
@@ -84,6 +86,7 @@ const adminItems = [
 ];
 
 const THEME_KEY = "afio-theme";
+const SIDEBAR_KEY = "afio-sidebar-collapsed";
 const businessBlockedClinicalRoutes = ["/modules", "/patients", "/scans", "/reports", "/admin/templates"];
 
 function EyeDepartmentLogo() {
@@ -113,6 +116,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const store = useDemoStore();
   const isAuthenticated = Boolean(store.data.currentUserId);
   const [openModules, setOpenModules] = useState<Record<string, boolean>>({});
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
 
   useEffect(() => {
@@ -121,7 +125,26 @@ export function AppShell({ children }: { children: ReactNode }) {
     const enabled = saved ? saved === "dark" : prefersDark;
     setDarkMode(enabled);
     document.documentElement.classList.toggle("dark", enabled);
+    setSidebarCollapsed(window.localStorage.getItem(SIDEBAR_KEY) === "true");
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || store.currentUser.role === "afio_admin") return;
+    const nextOpen: Record<string, boolean> = {};
+    store.visibleModuleIds.forEach((id) => {
+      const parent = moduleNavItems[id];
+      const children = moduleTreeItems[id] ?? [];
+      nextOpen[id] =
+        pathname === parent.href ||
+        pathname.startsWith(`${parent.href}/`) ||
+        children.some((child) => {
+          const childPath = child.href.split("?")[0];
+          const childModule = new URLSearchParams(child.href.split("?")[1] ?? "").get("module");
+          return (pathname === childPath || pathname.startsWith(`${childPath}/`)) && (!childModule || pathname.includes("/modules/") || window.location.search.includes(`module=${childModule}`));
+        });
+    });
+    setOpenModules((current) => ({ ...nextOpen, ...current }));
+  }, [isAuthenticated, pathname, store.currentUser.role, store.visibleModuleIds]);
 
   const toggleTheme = () => {
     setDarkMode((current) => {
@@ -183,9 +206,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const visibleModuleItems = Array.from(new Map(store.visibleModuleIds.map((id) => [moduleNavItems[id].href, moduleNavItems[id]])).values());
   const expandedModules: Record<string, boolean> = {};
   store.visibleModuleIds.forEach((id) => {
-    const parent = moduleNavItems[id];
-    const children = moduleTreeItems[id] ?? [];
-    expandedModules[id] = openModules[id] ?? (pathname === parent.href || pathname.startsWith(`${parent.href}/`) || children.some((child) => pathname === child.href || pathname.startsWith(`${child.href}/`)));
+    expandedModules[id] = openModules[id] ?? false;
   });
   const navItems = store.currentUser.role === "afio_admin" ? businessItems : [baseNavItems[0], ...visibleModuleItems, baseNavItems[1]];
   const items =
@@ -200,13 +221,21 @@ export function AppShell({ children }: { children: ReactNode }) {
   const moduleLabel = enabledModules.map((module) => module.shortName).join(" + ");
   const hospitalName = store.currentHospital?.name ?? store.currentUser.clinicName ?? "Clinical Report Platform";
   const workspaceName = store.currentUser.role === "afio_admin" ? "AFIO Clinical Platform" : hospitalName;
+  const sidebarWidth = sidebarCollapsed ? "lg:pl-20" : "lg:pl-72";
+  const toggleSidebar = () => {
+    setSidebarCollapsed((current) => {
+      const next = !current;
+      window.localStorage.setItem(SIDEBAR_KEY, String(next));
+      return next;
+    });
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-72 overflow-y-auto border-r border-slate-200 bg-white lg:block">
-        <div className="flex h-20 items-center gap-3 border-b border-slate-100 px-6">
+      <aside className={clsx("fixed inset-y-0 left-0 z-20 hidden overflow-y-auto border-r border-slate-200 bg-white transition-all duration-300 ease-out lg:block", sidebarCollapsed ? "w-20" : "w-72")}>
+        <div className={clsx("flex h-20 items-center border-b border-slate-100", sidebarCollapsed ? "justify-center px-3" : "gap-3 px-6")}>
           <EyeDepartmentLogo />
-          <div>
+          <div className={clsx("min-w-0 transition-all duration-200", sidebarCollapsed ? "hidden opacity-0" : "opacity-100")}>
             <p className="text-sm font-black text-slate-950">{workspaceName}</p>
             <p className="text-xs font-medium text-slate-500">{store.currentUser.role === "afio_admin" ? "Business control" : `${moduleLabel} access`}</p>
           </div>
@@ -219,18 +248,20 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={clsx(
-                  "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition",
+                  title={item.label}
+                  className={clsx(
+                  "flex items-center rounded-md px-3 py-2.5 text-sm font-semibold transition",
+                  sidebarCollapsed ? "justify-center" : "gap-3",
                   active ? "bg-clinic-50 text-clinic-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
                 )}
               >
                 <Icon size={18} />
-                {item.label}
+                {sidebarCollapsed ? null : item.label}
               </Link>
             );
           }) : (
             <>
-              <NavLinkItem item={baseNavItems[0]} pathname={pathname} />
+              <NavLinkItem item={baseNavItems[0]} pathname={pathname} collapsed={sidebarCollapsed} />
               {store.visibleModuleIds.map((moduleId) => {
                 const item = moduleNavItems[moduleId];
                 const Icon = item.icon;
@@ -244,18 +275,18 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <div key={item.href}>
                     <div className={clsx("flex items-center rounded-md transition", active ? "bg-clinic-50 text-clinic-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950")}>
                       <button
-                        className="flex h-10 w-9 items-center justify-center"
+                        className={clsx("flex h-10 items-center justify-center", sidebarCollapsed ? "hidden" : "w-9")}
                         aria-label={`${isOpen ? "Collapse" : "Expand"} ${item.label}`}
                         onClick={() => setOpenModules((current) => ({ ...current, [moduleId]: !isOpen }))}
                       >
                         {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                       </button>
-                      <Link href={item.href} className="flex flex-1 items-center gap-3 py-2.5 pr-3 text-sm font-semibold">
+                      <Link href={item.href} title={item.label} className={clsx("flex flex-1 items-center py-2.5 text-sm font-semibold", sidebarCollapsed ? "justify-center px-3" : "gap-3 pr-3")}>
                         <Icon size={18} />
-                        {item.label}
+                        {sidebarCollapsed ? null : item.label}
                       </Link>
                     </div>
-                    {isOpen ? (
+                    {isOpen && !sidebarCollapsed ? (
                       <div className="ml-5 mt-1 space-y-1 border-l border-slate-200 pl-3">
                         {children.map((child) => (
                           <NavLinkItem key={`${moduleId}-${child.label}-${child.href}`} item={child} pathname={pathname} nested />
@@ -265,28 +296,36 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </div>
                 );
               })}
-              <NavLinkItem item={baseNavItems[1]} pathname={pathname} />
-              {store.currentUser.role === "hospital_admin" || store.currentUser.role === "admin" ? adminItems.map((item) => <NavLinkItem key={item.href} item={item} pathname={pathname} />) : null}
-              {store.currentUser.role === "doctor" ? doctorItems.map((item) => <NavLinkItem key={item.href} item={item} pathname={pathname} />) : null}
+              <NavLinkItem item={baseNavItems[1]} pathname={pathname} collapsed={sidebarCollapsed} />
+              {store.currentUser.role === "hospital_admin" || store.currentUser.role === "admin" ? adminItems.map((item) => <NavLinkItem key={item.href} item={item} pathname={pathname} collapsed={sidebarCollapsed} />) : null}
+              {store.currentUser.role === "doctor" ? doctorItems.map((item) => <NavLinkItem key={item.href} item={item} pathname={pathname} collapsed={sidebarCollapsed} />) : null}
             </>
           )}
         </nav>
-        <div className="fixed bottom-0 left-0 w-72 border-t border-slate-100 bg-white p-4">
+        <div className={clsx("fixed bottom-0 left-0 border-t border-slate-100 bg-white p-4 transition-all duration-300", sidebarCollapsed ? "w-20" : "w-72")}>
           <button
-            className="mb-3 flex w-full items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+            className="mb-3 flex w-full items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+            onClick={toggleSidebar}
+            type="button"
+            title={sidebarCollapsed ? "Expand sidebar" : "Minimize sidebar"}
+          >
+            {sidebarCollapsed ? <ChevronsRight size={16} /> : <><ChevronsLeft size={16} /><span className="ml-2">Minimize</span></>}
+          </button>
+          <button
+            className="mb-3 flex w-full items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
             onClick={toggleTheme}
             type="button"
           >
-            <span>{darkMode ? "Dark mode" : "Light mode"}</span>
+            {sidebarCollapsed ? null : <span>{darkMode ? "Dark mode" : "Light mode"}</span>}
             {darkMode ? <Moon size={16} /> : <Sun size={16} />}
           </button>
-          <div className="rounded-md bg-slate-50 p-3">
+          <div className={clsx("rounded-md bg-slate-50 p-3", sidebarCollapsed ? "hidden" : "")}>
             <p className="text-sm font-bold text-slate-900">{store.currentUser.fullName}</p>
             <p className="text-xs text-slate-500">{store.currentUser.role.toUpperCase()}</p>
           </div>
         </div>
       </aside>
-      <div className="lg:pl-72">
+      <div className={clsx("transition-all duration-300 ease-out", sidebarWidth)}>
         <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur md:px-8">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
@@ -332,11 +371,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 function NavLinkItem({
   item,
   pathname,
-  nested = false
+  nested = false,
+  collapsed = false
 }: {
   item: { href: string; label: string; icon: React.ComponentType<{ size?: number }> };
   pathname: string;
   nested?: boolean;
+  collapsed?: boolean;
 }) {
   const Icon = item.icon;
   const itemPath = item.href.split("?")[0];
@@ -344,14 +385,16 @@ function NavLinkItem({
   return (
     <Link
       href={item.href}
+      title={item.label}
       className={clsx(
-        "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition",
+        "flex items-center rounded-md px-3 py-2.5 text-sm font-semibold transition",
+        collapsed ? "justify-center" : "gap-3",
         nested ? "py-2 text-xs" : "",
         active ? "bg-clinic-50 text-clinic-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
       )}
     >
       <Icon size={nested ? 15 : 18} />
-      {item.label}
+      {collapsed ? null : item.label}
     </Link>
   );
 }
