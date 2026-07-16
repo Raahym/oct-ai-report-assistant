@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { PageTitle } from "./app-shell";
 import { Button, Card, CardHeader, EmptyState, SafetyNotice, StatusBadge } from "./ui";
-import { predictOCTWithGradcam, predictRetina, predictVKG, type RetinaServiceSelection } from "@/lib/ai-api";
+import { predictCornealUlcer, predictOCTWithGradcam, predictRetina, predictVKG, type RetinaServiceSelection } from "@/lib/ai-api";
 import { useDemoStore } from "@/lib/demo-store";
 import { addFeedbackResponse, getCachedFeedbackEntries, getFeedbackEntries, submitFeedback, updateFeedbackStatus } from "@/lib/feedback";
 import { prepareScanImages } from "@/lib/image-processing";
@@ -39,6 +39,7 @@ import type { AiResult, BusinessPermissionKey, BusinessPermissions, ClinicalClas
 
 const diseaseClasses: DiseaseClass[] = ["CNV", "DME", "DRUSEN", "NORMAL"];
 const vkgClasses: ClinicalClass[] = ["NORMAL", "KCN"];
+const cornealUlcerClasses: ClinicalClass[] = ["FLAKY_MIXED", "POINTLIKE"];
 const retinaClasses: ClinicalClass[] = ["NO_DR", "MILD_DR", "MODERATE_DR", "SEVERE_DR", "PROLIFERATIVE_DR"];
 
 const MIN_PATIENT_AGE = 0;
@@ -272,7 +273,7 @@ function CleanModelVersion({ aiResult }: { aiResult: AiResult }) {
 
 function moduleFromSearchParams(searchParams: ReturnType<typeof useSearchParams>): ModuleId {
   const moduleId = searchParams.get("module");
-  return moduleId === "vkg" || moduleId === "retina" || moduleId === "corneal" ? moduleId : "oct";
+  return moduleId === "vkg" || moduleId === "retina" || moduleId === "corneal" || moduleId === "corneal_ulcer" ? moduleId : "oct";
 }
 
 function ClinicalStatsPanel({ moduleId }: { moduleId: ModuleId }) {
@@ -408,12 +409,13 @@ const defaultAnalysisSteps: Array<{ key: string; label: string }> = [
 ];
 
 function isModuleId(value?: string | null): value is ModuleId {
-  return value === "oct" || value === "vkg" || value === "retina" || value === "corneal";
+  return value === "oct" || value === "vkg" || value === "retina" || value === "corneal" || value === "corneal_ulcer";
 }
 
 function getModuleLabel(moduleId: ModuleId) {
   if (moduleId === "vkg") return "VKG";
   if (moduleId === "retina") return "Retina";
+  if (moduleId === "corneal_ulcer") return "Corneal Ulcer";
   if (moduleId === "corneal") return "Corneal";
   return "OCT";
 }
@@ -1030,6 +1032,16 @@ export function DashboardView() {
       accessHint: "Enable from Business Admin after purchase."
     },
     {
+      id: "corneal_ulcer",
+      enabled: visibleModuleIds.has("corneal_ulcer"),
+      title: "Corneal Ulcer Detection",
+      owner: "GROUP 2 DISEASE TEST",
+      route: "/modules/corneal-ulcer",
+      status: "Model ready",
+      summary: "Slit-lamp corneal ulcer pattern screening with separate activation, patients, reports, templates, and backend.",
+      accessHint: "Enable after the hospital purchases the Corneal Ulcer disease test."
+    },
+    {
       id: "retina",
       enabled: visibleModuleIds.has("retina"),
       title: "Retinal Fundus Screening",
@@ -1225,6 +1237,13 @@ export function OctModuleView() {
   );
 }
 
+function defaultTemplateClass(moduleId: ModuleId): ClinicalClass {
+  if (moduleId === "retina") return "NO_DR";
+  if (moduleId === "vkg") return "KCN";
+  if (moduleId === "corneal_ulcer") return "FLAKY_MIXED";
+  return "DME";
+}
+
 export function VkgModuleView() {
   const store = useDemoStore();
   const vkgScans = store.data.scans.filter((scan) => scan.moduleId === "vkg" || scan.scanType === "VKG");
@@ -1300,6 +1319,85 @@ export function VkgModuleView() {
         </Card>
       </div>
       <ClinicalStatsPanel moduleId="vkg" />
+    </>
+  );
+}
+
+export function CornealUlcerModuleView() {
+  const store = useDemoStore();
+  const scans = store.data.scans.filter((scan) => scan.moduleId === "corneal_ulcer" || scan.scanType === "CORNEAL_ULCER");
+  const reports = store.data.reports.filter((report) => report.moduleId === "corneal_ulcer");
+  const patientIds = new Set(scans.map((scan) => scan.patientId));
+  const patients = store.data.patients.filter((patient) => patientIds.has(patient.id) || patient.moduleId === "corneal_ulcer");
+  const pending = reports.filter((report) => report.status !== "approved").length;
+  const approved = reports.filter((report) => report.status === "approved").length;
+  const today = new Date().toISOString().slice(0, 10);
+  const todayReports = reports.filter((report) => report.createdAt.startsWith(today)).length;
+  const stats = [
+    ["Ulcer patients", patients.length],
+    ["Slit-lamp tests", scans.length],
+    ["Pending reports", pending],
+    ["Approved reports", approved],
+    ["Reports today", todayReports]
+  ];
+  return (
+    <>
+      <PageTitle
+        title="Corneal Ulcer Detection"
+        subtitle="Group 2 slit-lamp corneal disease workflow with separate patients, scans, model output, templates, and reports."
+        action={
+          <div className="grid gap-2 sm:flex">
+            <Link href="/patients/new?module=corneal_ulcer" className="block">
+              <Button className="w-full">
+                <Plus size={16} />
+                New Patient
+              </Button>
+            </Link>
+            <Link href="/scans/upload?module=corneal_ulcer" className="block">
+              <Button className="w-full" variant="secondary">
+                <Upload size={16} />
+                Upload Slit-Lamp
+              </Button>
+            </Link>
+            <Link href="/reports/history?module=corneal_ulcer" className="block">
+              <Button className="w-full" variant="secondary">
+                <ClipboardCheck size={16} />
+                Reports
+              </Button>
+            </Link>
+          </div>
+        }
+      />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        {stats.map(([label, value]) => (
+          <Card key={label} className="p-5">
+            <p className="text-sm font-semibold text-slate-500">{label}</p>
+            <p className="mt-2 text-3xl font-black text-slate-950">{value}</p>
+          </Card>
+        ))}
+      </div>
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <Card>
+          <CardHeader title="Recent Corneal Ulcer Patients" subtitle="Open a patient profile to view slit-lamp disease tests and reports." />
+          <div className="divide-y divide-slate-100">
+            {patients.slice(0, 5).map((patient) => (
+              <Link key={patient.id} href={`/patients/${patient.id}`} className="flex items-center justify-between px-5 py-4 hover:bg-slate-50">
+                <div>
+                  <p className="font-bold text-slate-900">{patient.fullName}</p>
+                  <p className="text-sm text-slate-500">{patient.patientCode}</p>
+                </div>
+                <p className="text-sm font-semibold text-clinic-700">Open</p>
+              </Link>
+            ))}
+            {patients.length === 0 ? <EmptyState title="No corneal ulcer patients yet" body="Create a patient or upload the first slit-lamp corneal image." /> : null}
+          </div>
+        </Card>
+        <Card>
+          <CardHeader title="Recent Corneal Ulcer Reports" subtitle="Draft, pending, and approved reports for this disease test." />
+          <ReportRows reports={reports.slice(0, 5)} />
+        </Card>
+      </div>
+      <ClinicalStatsPanel moduleId="corneal_ulcer" />
     </>
   );
 }
@@ -1662,11 +1760,12 @@ export function AfioBusinessAdminView() {
   const [memberResult, setMemberResult] = useState<{ email: string; temporaryPassword: string; emailSent: boolean; emailMessage?: string } | null>(null);
   const [savingMemberId, setSavingMemberId] = useState("");
   const [hospitalDrafts, setHospitalDrafts] = useState<Record<string, { name: string; code: string; adminEmail: string; adminPassword: string }>>({});
-  const allModuleIds: ModuleId[] = ["oct", "vkg", "corneal", "retina"];
+  const allModuleIds: ModuleId[] = ["oct", "vkg", "corneal", "corneal_ulcer", "retina"];
   const moduleNames: Record<ModuleId, string> = {
     oct: "OCT",
     vkg: "VKG",
     corneal: "Corneal",
+    corneal_ulcer: "Corneal Ulcer",
     retina: "Retina"
   };
 
@@ -2430,6 +2529,8 @@ export function UploadScanView() {
     const preparedAgain = await prepareScanImages(file);
     return moduleId === "retina"
       ? predictRetina(preparedAgain.predictionFile, { services: retinaServices, imageQualityWarnings: preparedAgain.quality.warnings })
+      : moduleId === "corneal_ulcer"
+        ? predictCornealUlcer(file)
       : moduleId === "vkg"
         ? predictVKG(file)
         : predictOCTWithGradcam(file);
@@ -2615,7 +2716,7 @@ export function AnalysisView({ id }: { id: string }) {
   const approver = linkedReport?.approvedBy ? store.data.profiles.find((item) => item.id === linkedReport.approvedBy) : undefined;
   const canManageAnalysis = store.currentUser.role === "doctor" || store.currentUser.role === "hospital_admin" || store.currentUser.role === "admin";
   const canManageScan = canManageAnalysis;
-  const analysisClasses = scan.moduleId === "retina" ? retinaClasses : scan.moduleId === "vkg" ? vkgClasses : diseaseClasses;
+  const analysisClasses = scan.moduleId === "retina" ? retinaClasses : scan.moduleId === "corneal_ulcer" ? cornealUlcerClasses : scan.moduleId === "vkg" ? vkgClasses : diseaseClasses;
 
   const analyzeScan = async () => {
     setAnalysisError("");
@@ -2628,6 +2729,8 @@ export function AnalysisView({ id }: { id: string }) {
       const prepared = await prepareScanImages(file);
       const prediction = scan.moduleId === "retina"
         ? await predictRetina(prepared.predictionFile, { services: retinaServices, imageQualityWarnings: prepared.quality.warnings })
+        : scan.moduleId === "corneal_ulcer"
+          ? await predictCornealUlcer(prepared.predictionFile)
         : scan.moduleId === "vkg"
           ? await predictVKG(prepared.predictionFile)
           : await predictOCTWithGradcam(prepared.predictionFile);
@@ -3797,7 +3900,7 @@ export function TemplatesView() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [medicine, setMedicine] = useState({
-    template: (moduleId === "retina" ? "NO_DR" : moduleId === "vkg" ? "KCN" : "DME") as ClinicalClass,
+    template: defaultTemplateClass(moduleId),
     name: "",
     dose: "",
     route: "Oral",
@@ -3837,7 +3940,7 @@ export function TemplatesView() {
   useEffect(() => {
     setMedicine((current) => ({
       ...current,
-      template: (moduleId === "retina" ? "NO_DR" : moduleId === "vkg" ? "KCN" : "DME") as ClinicalClass
+      template: defaultTemplateClass(moduleId)
     }));
   }, [moduleId]);
 
@@ -4231,12 +4334,12 @@ function FeedbackDialog({
                   onChange={(value) => setForm({ ...form, clinicId: value })}
                 />
                 <SelectField
-                  label="Service"
-                  value={form.moduleId}
-                  options={["oct", "vkg", "corneal", "retina"]}
-                  optionLabels={{ oct: "OCT", vkg: "VKG", corneal: "Corneal", retina: "Retina" }}
+                label="Service"
+                value={form.moduleId}
+                  options={["oct", "vkg", "corneal", "corneal_ulcer", "retina"]}
+                  optionLabels={{ oct: "OCT", vkg: "VKG", corneal: "Corneal", corneal_ulcer: "Corneal Ulcer", retina: "Retina" }}
                   onChange={(value) => setForm({ ...form, moduleId: value as ModuleId })}
-                />
+              />
               </div>
               <Field label="Your name" value={form.name} onChange={(value) => setForm({ ...form, name: value })} />
               <div className="grid gap-4 sm:grid-cols-2">

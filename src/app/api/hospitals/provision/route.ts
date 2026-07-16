@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
-type ModuleId = "oct" | "vkg" | "corneal" | "retina";
+type ModuleId = "oct" | "vkg" | "corneal" | "corneal_ulcer" | "retina";
 type SubscriptionStatus = "trial" | "active" | "past_due" | "suspended";
 type DepartmentRow = {
   id: string;
@@ -12,6 +12,7 @@ const moduleNames: Record<ModuleId, string> = {
   oct: "OCT",
   vkg: "VKG",
   corneal: "Corneal",
+  corneal_ulcer: "Corneal Ulcer",
   retina: "Retinal Fundus"
 };
 
@@ -19,6 +20,7 @@ const departmentNames: Record<ModuleId, string> = {
   oct: "OCT Department",
   vkg: "VKG Department",
   corneal: "Corneal / Keratoconus Department",
+  corneal_ulcer: "Corneal Ulcer Department",
   retina: "Retinal Fundus Department"
 };
 
@@ -135,7 +137,7 @@ export async function POST(request: NextRequest) {
   const subscriptionStatus = (body.subscriptionStatus ?? "trial") as SubscriptionStatus;
   const enabledModules = Array.isArray(body.enabledModules)
     ? (body.enabledModules.filter((item: unknown): item is ModuleId =>
-        item === "oct" || item === "vkg" || item === "corneal" || item === "retina"
+        item === "oct" || item === "vkg" || item === "corneal" || item === "corneal_ulcer" || item === "retina"
       ))
     : [];
 

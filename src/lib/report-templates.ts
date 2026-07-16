@@ -59,6 +59,22 @@ export const reportTemplates: Record<
     recommendation:
       "Review tomography/topography indices, refraction, visual acuity, slit-lamp findings, and progression history. Consider corneal specialist referral if clinically indicated."
   },
+  FLAKY_MIXED: {
+    findings:
+      "The slit-lamp corneal image shows screening features consistent with a flaky or mixed corneal surface ulcer pattern.",
+    impression:
+      "Corneal ulcer screening suggests a Flaky/Mixed pattern. This is a preliminary image-based result and requires slit-lamp clinical confirmation.",
+    recommendation:
+      "Corneal specialist or ophthalmologist review is advised. Correlate with symptoms, fluorescein staining, infection risk, culture status, and treatment history."
+  },
+  POINTLIKE: {
+    findings:
+      "The slit-lamp corneal image shows screening features consistent with a point-like corneal ulcer pattern.",
+    impression:
+      "Corneal ulcer screening suggests a Point-like pattern. This is a preliminary image-based result and requires clinical confirmation.",
+    recommendation:
+      "Review with slit-lamp examination, fluorescein staining, pain/redness history, infectious risk factors, and follow-up response to therapy."
+  },
   NO_DR: {
     findings: "The combined fundus screening did not show screening features of diabetic retinopathy. Glaucoma and hypertensive-retinopathy outputs should be reviewed in the result summary.",
     impression: "Fundus screening suggests no diabetic retinopathy.",
@@ -98,6 +114,7 @@ type DbReportTemplate = {
 
 function classesForModule(moduleId: ModuleId): ClinicalClass[] {
   if (moduleId === "retina") return ["NO_DR", "MILD_DR", "MODERATE_DR", "SEVERE_DR", "PROLIFERATIVE_DR"];
+  if (moduleId === "corneal_ulcer") return ["FLAKY_MIXED", "POINTLIKE"];
   return moduleId === "vkg" ? ["NORMAL", "KCN"] : ["NORMAL", "CNV", "DME", "DRUSEN"];
 }
 

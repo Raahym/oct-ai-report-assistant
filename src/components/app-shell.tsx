@@ -46,6 +46,7 @@ const moduleNavItems = {
   oct: { href: "/modules/oct", label: "OCT", icon: ScanEye },
   vkg: { href: "/modules/vkg", label: "VKG", icon: Activity },
   corneal: { href: "/modules/corneal", label: "Corneal Detection", icon: Activity },
+  corneal_ulcer: { href: "/modules/corneal-ulcer", label: "Corneal Ulcer", icon: Activity },
   retina: { href: "/modules/retina", label: "Retinal Screening", icon: Eye }
 };
 
@@ -67,6 +68,14 @@ const moduleTreeItems = {
     { href: "/admin/templates?module=vkg", label: "Templates", icon: ClipboardList }
   ],
   corneal: [{ href: "/modules/corneal", label: "Overview", icon: LayoutDashboard }],
+  corneal_ulcer: [
+    { href: "/modules/corneal-ulcer", label: "Overview", icon: LayoutDashboard },
+    { href: "/patients/search?module=corneal_ulcer", label: "Patients", icon: Users },
+    { href: "/patients/new?module=corneal_ulcer", label: "New Patient", icon: UserCog },
+    { href: "/scans/upload?module=corneal_ulcer", label: "Upload Slit-Lamp", icon: Upload },
+    { href: "/reports/history?module=corneal_ulcer", label: "Reports", icon: FileText },
+    { href: "/admin/templates?module=corneal_ulcer", label: "Templates", icon: ClipboardList }
+  ],
   retina: [
     { href: "/modules/retina", label: "Overview", icon: LayoutDashboard },
     { href: "/patients/search?module=retina", label: "Patients", icon: Users },

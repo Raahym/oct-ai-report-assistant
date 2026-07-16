@@ -48,9 +48,10 @@ function addFooter(doc: jsPDF, margin: number, safeDate: string, pageNumber: num
 }
 
 function reportBrand(scan: Pick<Scan, "moduleId" | "scanType">) {
-  const moduleId = scan.moduleId ?? (scan.scanType === "VKG" ? "vkg" : scan.scanType === "RETINA" ? "retina" : scan.scanType === "CORNEAL" ? "corneal" : "oct");
+  const moduleId = scan.moduleId ?? (scan.scanType === "VKG" ? "vkg" : scan.scanType === "RETINA" ? "retina" : scan.scanType === "CORNEAL_ULCER" ? "corneal_ulcer" : scan.scanType === "CORNEAL" ? "corneal" : "oct");
   if (moduleId === "vkg") return { title: "VKG", filenamePrefix: "VKG_Report" };
   if (moduleId === "retina") return { title: "RetinalScan", filenamePrefix: "RetinalScan_Report" };
+  if (moduleId === "corneal_ulcer") return { title: "Corneal Ulcer", filenamePrefix: "Corneal_Ulcer_Report" };
   if (moduleId === "corneal") return { title: "Corneal", filenamePrefix: "Corneal_Report" };
   return { title: "OCT", filenamePrefix: "OCT_Report" };
 }

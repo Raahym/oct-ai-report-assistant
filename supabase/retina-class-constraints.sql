@@ -14,7 +14,9 @@ check (predicted_class in (
   'MILD_DR',
   'MODERATE_DR',
   'SEVERE_DR',
-  'PROLIFERATIVE_DR'
+  'PROLIFERATIVE_DR',
+  'FLAKY_MIXED',
+  'POINTLIKE'
 ));
 
 alter table if exists report_templates drop constraint if exists report_templates_disease_class_check;

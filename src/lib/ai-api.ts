@@ -114,6 +114,15 @@ export async function predictCorneal(file: File): Promise<BackendPrediction> {
   return predictVKG(file);
 }
 
+export async function predictCornealUlcer(file: File): Promise<BackendPrediction> {
+  const backendUrl = process.env.NEXT_PUBLIC_CORNEAL_ULCER_BACKEND_URL?.replace(/\/$/, "");
+  return postImagePrediction(
+    file,
+    backendUrl,
+    "Corneal ulcer disease backend is not connected. Add NEXT_PUBLIC_CORNEAL_ULCER_BACKEND_URL in Vercel/Render before running this screening."
+  );
+}
+
 export async function predictVKG(file: File): Promise<BackendPrediction> {
   const backendUrls = uniqueUrls([
     process.env.NEXT_PUBLIC_VKG_BACKEND_URL,

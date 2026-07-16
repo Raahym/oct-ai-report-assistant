@@ -1,6 +1,6 @@
 import { Activity, Eye, Layers3, ScanEye } from "lucide-react";
 
-export type ClinicalModuleId = "oct" | "vkg" | "corneal" | "retina";
+export type ClinicalModuleId = "oct" | "vkg" | "corneal" | "corneal_ulcer" | "retina";
 
 export type ClinicalModule = {
   id: ClinicalModuleId;
@@ -45,6 +45,17 @@ export const clinicalModules: ClinicalModule[] = [
     status: "training",
     description: "Keratoconus/corneal screening module, sold separately from OCT/VKG.",
     accent: "bg-amber-50 text-amber-800 ring-amber-200",
+    icon: Layers3
+  },
+  {
+    id: "corneal_ulcer",
+    name: "Corneal Ulcer Detection",
+    department: "Corneal Disease Department",
+    shortName: "Ulcer",
+    status: "model_received",
+    description: "Slit-lamp corneal ulcer pattern screening with separate activation, patients, scans, reports, and templates.",
+    route: "/modules/corneal-ulcer",
+    accent: "bg-rose-50 text-rose-800 ring-rose-200",
     icon: Layers3
   },
   {

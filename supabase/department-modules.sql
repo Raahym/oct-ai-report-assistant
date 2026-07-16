@@ -37,7 +37,7 @@ update profiles set role = 'afio_admin', is_active = true where lower(email) = '
 create table if not exists departments (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid references clinics(id) on delete cascade,
-  module_id text not null check (module_id in ('oct', 'vkg', 'corneal', 'retina')),
+  module_id text not null check (module_id in ('oct', 'vkg', 'corneal', 'corneal_ulcer', 'retina')),
   name text not null,
   is_active boolean default true,
   created_at timestamptz default now(),
@@ -47,7 +47,7 @@ create table if not exists departments (
 create table if not exists clinic_modules (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid references clinics(id) on delete cascade,
-  module_id text not null check (module_id in ('oct', 'vkg', 'corneal', 'retina')),
+  module_id text not null check (module_id in ('oct', 'vkg', 'corneal', 'corneal_ulcer', 'retina')),
   is_enabled boolean default true,
   package_name text default 'demo',
   created_at timestamptz default now(),
@@ -71,7 +71,7 @@ create table if not exists module_api_keys (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid references clinics(id) on delete cascade,
   department_id uuid references departments(id) on delete cascade,
-  module_id text not null check (module_id in ('oct', 'vkg', 'corneal', 'retina')),
+  module_id text not null check (module_id in ('oct', 'vkg', 'corneal', 'corneal_ulcer', 'retina')),
   api_base_url text not null,
   api_key_secret_name text,
   is_active boolean default true,
@@ -83,18 +83,18 @@ alter table profiles add column if not exists clinic_id uuid references clinics(
 alter table profiles add column if not exists default_department_id uuid references departments(id);
 alter table patients add column if not exists clinic_id uuid references clinics(id);
 alter table patients add column if not exists department_id uuid references departments(id);
-alter table patients add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'retina'));
+alter table patients add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'corneal_ulcer', 'retina'));
 alter table patients add column if not exists global_patient_key text;
 alter table scans add column if not exists clinic_id uuid references clinics(id);
 alter table scans add column if not exists department_id uuid references departments(id);
-alter table scans add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'retina'));
-alter table ai_results add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'retina'));
+alter table scans add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'corneal_ulcer', 'retina'));
+alter table ai_results add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'corneal_ulcer', 'retina'));
 alter table ai_results drop constraint if exists ai_results_predicted_class_check;
-alter table ai_results add constraint ai_results_predicted_class_check check (predicted_class in ('CNV', 'DME', 'DRUSEN', 'NORMAL', 'KCN', 'SUSPECT', 'NO_DR', 'MILD_DR', 'MODERATE_DR', 'SEVERE_DR', 'PROLIFERATIVE_DR'));
+alter table ai_results add constraint ai_results_predicted_class_check check (predicted_class in ('CNV', 'DME', 'DRUSEN', 'NORMAL', 'KCN', 'SUSPECT', 'FLAKY_MIXED', 'POINTLIKE', 'NO_DR', 'MILD_DR', 'MODERATE_DR', 'SEVERE_DR', 'PROLIFERATIVE_DR'));
 alter table reports add column if not exists clinic_id uuid references clinics(id);
 alter table reports add column if not exists department_id uuid references departments(id);
-alter table reports add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'retina'));
-alter table if exists report_templates add column if not exists module_id text default 'oct' check (module_id in ('oct', 'vkg', 'corneal', 'retina'));
+alter table reports add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'corneal_ulcer', 'retina'));
+alter table if exists report_templates add column if not exists module_id text default 'oct' check (module_id in ('oct', 'vkg', 'corneal', 'corneal_ulcer', 'retina'));
 update report_templates set module_id = 'oct' where module_id is null;
 alter table report_templates drop constraint if exists report_templates_pkey;
 alter table report_templates drop constraint if exists report_templates_disease_class_check;
@@ -114,7 +114,7 @@ create unique index if not exists report_templates_module_class_uidx on report_t
 alter table if exists feedback_entries add column if not exists clinic_id uuid references clinics(id);
 alter table if exists feedback_entries add column if not exists hospital_name text;
 alter table if exists feedback_entries add column if not exists department_id uuid references departments(id);
-alter table if exists feedback_entries add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'retina'));
+alter table if exists feedback_entries add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'corneal_ulcer', 'retina'));
 
 insert into clinics (name, code)
 values
@@ -161,6 +161,7 @@ cross join (
     ('oct', 'OCT Department'),
     ('vkg', 'VKG Department'),
     ('corneal', 'Corneal / Keratoconus Department'),
+    ('corneal_ulcer', 'Corneal Ulcer Department'),
     ('retina', 'Retinal Fundus Department')
 ) as departments(module_id, name)
 on conflict (clinic_id, module_id) do nothing;

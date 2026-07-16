@@ -4,7 +4,7 @@ create table if not exists feedback_entries (
   status text not null default 'new' check (status in ('new', 'reviewing', 'resolved')),
   clinic_id uuid references clinics(id),
   hospital_name text,
-  module_id text check (module_id in ('oct', 'vkg', 'corneal', 'retina')),
+  module_id text check (module_id in ('oct', 'vkg', 'corneal', 'corneal_ulcer', 'retina')),
   name text not null,
   email text,
   phone text,
@@ -17,7 +17,7 @@ create table if not exists feedback_entries (
 
 alter table feedback_entries add column if not exists clinic_id uuid references clinics(id);
 alter table feedback_entries add column if not exists hospital_name text;
-alter table feedback_entries add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'retina'));
+alter table feedback_entries add column if not exists module_id text check (module_id in ('oct', 'vkg', 'corneal', 'corneal_ulcer', 'retina'));
 
 create table if not exists feedback_messages (
   id uuid primary key default gen_random_uuid(),

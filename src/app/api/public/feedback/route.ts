@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-type ModuleId = "oct" | "vkg" | "corneal" | "retina";
+type ModuleId = "oct" | "vkg" | "corneal" | "corneal_ulcer" | "retina";
 type FeedbackType = "feedback" | "complaint";
 
 function jsonError(message: string, status = 400) {

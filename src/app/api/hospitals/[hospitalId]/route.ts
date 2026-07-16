@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-type ModuleId = "oct" | "vkg" | "corneal" | "retina";
+type ModuleId = "oct" | "vkg" | "corneal" | "corneal_ulcer" | "retina";
 
 const moduleNames: Record<ModuleId, string> = {
   oct: "OCT",
   vkg: "VKG",
   corneal: "Corneal",
+  corneal_ulcer: "Corneal Ulcer",
   retina: "Retinal Fundus"
 };
 

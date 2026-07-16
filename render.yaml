@@ -97,6 +97,18 @@ services:
       - key: CORNEAL_MODELS
         value: efficientnetv2
   - type: web
+    name: afio-corneal-ulcer-backend
+    runtime: python
+    rootDir: corneal-ulcer-ai-backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: CORNEAL_ULCER_MODEL_PATH
+        value: best_model_corneal_ulcer_v6.h5
+  - type: web
     name: afio-retina-ai-backend
     runtime: node
     rootDir: retina-ai-backend

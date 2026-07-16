@@ -32,7 +32,7 @@ create table if not exists patients (
   diabetes_history text default 'Unknown',
   previous_eye_disease text,
   clinical_notes text,
-  module_id text check (module_id in ('oct', 'vkg', 'corneal', 'retina')),
+  module_id text check (module_id in ('oct', 'vkg', 'corneal', 'corneal_ulcer', 'retina')),
   created_by uuid references profiles(id),
   created_at timestamptz default now(),
   updated_at timestamptz default now()
@@ -53,7 +53,7 @@ create table if not exists scans (
 create table if not exists ai_results (
   id uuid primary key default gen_random_uuid(),
   scan_id uuid references scans(id) on delete cascade,
-  predicted_class text not null check (predicted_class in ('CNV', 'DME', 'DRUSEN', 'NORMAL', 'KCN', 'SUSPECT', 'NO_DR', 'MILD_DR', 'MODERATE_DR', 'SEVERE_DR', 'PROLIFERATIVE_DR')),
+  predicted_class text not null check (predicted_class in ('CNV', 'DME', 'DRUSEN', 'NORMAL', 'KCN', 'SUSPECT', 'FLAKY_MIXED', 'POINTLIKE', 'NO_DR', 'MILD_DR', 'MODERATE_DR', 'SEVERE_DR', 'PROLIFERATIVE_DR')),
   confidence numeric not null,
   probabilities jsonb not null,
   model_name text,

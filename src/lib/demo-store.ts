@@ -410,8 +410,11 @@ function normalizeProbabilities(prediction: ClinicalClass) {
   const confidence = Number((0.79 + Math.random() * 0.14).toFixed(2));
   const probabilities = {} as Partial<Record<ClinicalClass, number>>;
   const retinaClasses: ClinicalClass[] = ["NO_DR", "MILD_DR", "MODERATE_DR", "SEVERE_DR", "PROLIFERATIVE_DR"];
+  const cornealUlcerClasses: ClinicalClass[] = ["FLAKY_MIXED", "POINTLIKE"];
   const classes: ClinicalClass[] = retinaClasses.includes(prediction)
     ? retinaClasses
+    : cornealUlcerClasses.includes(prediction)
+      ? cornealUlcerClasses
     : prediction === "KCN"
       ? ["NORMAL", "KCN"]
       : ["CNV", "DME", "DRUSEN", "NORMAL"];
@@ -762,7 +765,7 @@ function hospitalForUser(data: AppData, profile: Profile) {
 }
 
 function visibleModuleIdsForUser(data: AppData, profile: Profile): ModuleId[] {
-  if (profile.role === "afio_admin") return ["oct", "vkg", "corneal", "retina"];
+  if (profile.role === "afio_admin") return ["oct", "vkg", "corneal", "corneal_ulcer", "retina"];
   const hospital = hospitalForUser(data, profile);
   return hospital?.enabledModules ?? ["oct"];
 }
@@ -1238,7 +1241,7 @@ export function useDemoStore() {
     async addScan(input: { patientId: string; imageUrl: string; eyeSide: EyeSide; scanNotes?: string; file?: File; moduleId?: ModuleId }) {
       const patient = data.patients.find((item) => item.id === input.patientId);
       const moduleId: ModuleId = input.moduleId ?? "oct";
-      const scanType = moduleId === "vkg" ? "VKG" : moduleId === "retina" ? "RETINA" : moduleId === "corneal" ? "CORNEAL" : "OCT";
+      const scanType = moduleId === "vkg" ? "VKG" : moduleId === "retina" ? "RETINA" : moduleId === "corneal_ulcer" ? "CORNEAL_ULCER" : moduleId === "corneal" ? "CORNEAL" : "OCT";
       if (mode === "supabase" && supabase && input.file) {
         assertModuleAccess(moduleId);
         if (!patient) throw new Error("Patient not found.");
@@ -1420,6 +1423,8 @@ export function useDemoStore() {
     runAnalysis(scan: Scan) {
       const classes: ClinicalClass[] = scan.moduleId === "retina"
         ? ["NO_DR", "MILD_DR", "MODERATE_DR", "SEVERE_DR", "PROLIFERATIVE_DR"]
+        : scan.moduleId === "corneal_ulcer"
+          ? ["FLAKY_MIXED", "POINTLIKE"]
         : scan.moduleId === "vkg"
           ? ["NORMAL", "KCN"]
           : ["CNV", "DME", "DRUSEN", "NORMAL"];
@@ -1994,7 +1999,7 @@ export function useDemoStore() {
         if (input.enabledModules) {
           const currentModules = new Set(hospital?.enabledModules ?? []);
           const nextModules = new Set(input.enabledModules);
-          const allModules: ModuleId[] = ["oct", "vkg", "corneal", "retina"];
+          const allModules: ModuleId[] = ["oct", "vkg", "corneal", "corneal_ulcer", "retina"];
           await Promise.all(allModules.map(async (moduleId) => {
             const shouldEnable = nextModules.has(moduleId);
             if (currentModules.has(moduleId) || shouldEnable) {

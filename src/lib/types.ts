@@ -2,7 +2,7 @@ export type Role = "afio_admin" | "hospital_admin" | "admin" | "doctor" | "assis
 export type RequestedRole = Role;
 export type Gender = "Female" | "Male" | "Other";
 export type EyeSide = "Left" | "Right" | "Both" | "Unknown";
-export type ModuleId = "oct" | "vkg" | "corneal" | "retina";
+export type ModuleId = "oct" | "vkg" | "corneal" | "corneal_ulcer" | "retina";
 export type BusinessPermissionKey =
   | "manage_members"
   | "add_hospitals"
@@ -13,8 +13,9 @@ export type BusinessPermissionKey =
 export type BusinessPermissions = Partial<Record<BusinessPermissionKey, boolean>>;
 export type DiseaseClass = "CNV" | "DME" | "DRUSEN" | "NORMAL";
 export type VkgClass = "NORMAL" | "KCN";
+export type CornealUlcerClass = "FLAKY_MIXED" | "POINTLIKE";
 export type RetinaClass = "NO_DR" | "MILD_DR" | "MODERATE_DR" | "SEVERE_DR" | "PROLIFERATIVE_DR";
-export type ClinicalClass = DiseaseClass | VkgClass | RetinaClass;
+export type ClinicalClass = DiseaseClass | VkgClass | CornealUlcerClass | RetinaClass;
 export type PredictionClass = ClinicalClass | "INVALID_IMAGE" | "INVALID_OR_UNCERTAIN_IMAGE";
 export type ReportStatus = "draft" | "pending_review" | "approved" | "rejected" | "superseded";
 
@@ -72,7 +73,7 @@ export type Scan = {
   patientId: string;
   imageUrl: string;
   storagePath: string;
-  scanType: "OCT" | "VKG" | "CORNEAL" | "RETINA";
+  scanType: "OCT" | "VKG" | "CORNEAL" | "CORNEAL_ULCER" | "RETINA";
   clinicId?: string;
   departmentId?: string;
   moduleId?: ModuleId;
@@ -125,6 +126,8 @@ export function isClinicalClass(value: PredictionClass): value is ClinicalClass 
     value === "DRUSEN" ||
     value === "NORMAL" ||
     value === "KCN" ||
+    value === "FLAKY_MIXED" ||
+    value === "POINTLIKE" ||
     value === "NO_DR" ||
     value === "MILD_DR" ||
     value === "MODERATE_DR" ||
