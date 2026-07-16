@@ -91,3 +91,6 @@ Avoid hard lockouts where possible; prefer temporary cooldowns and clear recover
 5. Add dependency/secret scan scripts to the release checklist.
 6. Keep all new modules, including Corneal Ulcer Detection, behind Business Admin activation.
 
+## Deployment Notes
+
+- 2026-07-17: Corneal Ulcer Detection backend is configured as a separate Render free-tier Python service. Frontend wiring uses `NEXT_PUBLIC_CORNEAL_ULCER_BACKEND_URL` in Vercel project settings.
