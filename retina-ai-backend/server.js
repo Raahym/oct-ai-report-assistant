@@ -12,7 +12,10 @@ const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 const PYTHON_BIN = process.env.PYTHON_BIN || "python";
 const SKIP_GRADCAM = process.env.SKIP_GRADCAM === "true";
 const RETINA_SERVICE = (process.env.RETINA_SERVICE || "all").toLowerCase();
-const MODEL_PATH = path.join(__dirname, "..", "models", "smoke_test.onnx");
+const MODEL_PATH =
+  process.env.RETINA_DR_MODEL_PATH ||
+  path.join(__dirname, "..", "models", "smoke_test.onnx");
+const DR_MODEL_KIND = (process.env.RETINA_DR_MODEL_KIND || "legacy").toLowerCase();
 const GLAUCOMA_MODEL_PATH = path.join(
   __dirname,
   "..",
@@ -69,6 +72,36 @@ function serviceEnabled(serviceName) {
 }
 
 async function preprocessImageDR(buffer) {
+  if (DR_MODEL_KIND === "convnext") {
+    const { data } = await sharp(buffer)
+      .resize(224, 224)
+      .removeAlpha()
+      .toColorspace("srgb")
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    const mean = [0.485, 0.456, 0.406];
+    const std = [0.229, 0.224, 0.225];
+    const float32Data = new Float32Array(3 * 224 * 224);
+    const pixelCount = 224 * 224;
+
+    for (let i = 0; i < pixelCount; i++) {
+      float32Data[i] = data[i * 3] / 255;
+      float32Data[pixelCount + i] = data[i * 3 + 1] / 255;
+      float32Data[2 * pixelCount + i] = data[i * 3 + 2] / 255;
+    }
+
+    for (let c = 0; c < 3; c++) {
+      const channelOffset = c * pixelCount;
+      for (let i = 0; i < pixelCount; i++) {
+        float32Data[channelOffset + i] =
+          (float32Data[channelOffset + i] - mean[c]) / std[c];
+      }
+    }
+
+    return new ort.Tensor("float32", float32Data, [1, 3, 224, 224]);
+  }
+
   const { data } = await sharp(buffer)
     .resize(300, 300)
     .removeAlpha()
@@ -352,6 +385,8 @@ app.get("/health", (req, res) => {
   res.json({
     status: "ok",
     service: RETINA_SERVICE,
+    dr_model_kind: DR_MODEL_KIND,
+    dr_model_path: path.basename(MODEL_PATH),
     models_loaded: {
       dr: Boolean(session),
       glaucoma: Boolean(glaucomaSession),
@@ -398,6 +433,10 @@ app.post("/predict", upload.single("image"), async (req, res) => {
       referral: REFERRAL_GUIDANCE[predictedClass],
       heatmap,
       low_confidence: isLowConfidence,
+      model_name:
+        DR_MODEL_KIND === "convnext"
+          ? "ConvNeXt-Base DR Screening Model (ONNX quantized)"
+          : "DR severity ONNX model",
       confidence_warning: isLowConfidence
         ? "Low confidence prediction — consider re-imaging or specialist review"
         : null,

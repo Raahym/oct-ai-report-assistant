@@ -119,21 +119,27 @@ services:
         value: all
   - type: web
     name: afio-retina-dr-backend
-    runtime: python
+    runtime: node
     rootDir: retina-ai-backend
     buildCommand: >-
-      python -m pip install gdown &&
-      python -m gdown --folder https://drive.google.com/drive/folders/1VBxwdx-CoSBP906N3Zx_gEjRGfeQtglo --output ../models &&
-      python -m pip install -r requirements-dr-convnext.txt
-    startCommand: python dr_convnext_service.py
+      npm install
+    startCommand: node server.js
     healthCheckPath: /health
     envVars:
+      - key: NODE_ENV
+        value: production
       - key: ALLOWED_ORIGIN
         value: https://cvclinics.online
-      - key: TORCH_NUM_THREADS
+      - key: SKIP_GRADCAM
+        value: "true"
+      - key: ORT_NUM_THREADS
         value: "1"
-      - key: RETINA_DR_CONVNEXT_ARCH
-        value: convnext_base
+      - key: RETINA_SERVICE
+        value: dr
+      - key: RETINA_DR_MODEL_KIND
+        value: convnext
+      - key: RETINA_DR_MODEL_PATH
+        value: ../models/best_convnext_model.quant.onnx
   - type: web
     name: afio-retina-glaucoma-backend
     runtime: node
