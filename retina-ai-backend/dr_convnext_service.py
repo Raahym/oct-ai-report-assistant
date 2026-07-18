@@ -151,14 +151,7 @@ def verify_ai_gateway_signature(file_bytes):
 
 @app.get("/health")
 def health():
-    return jsonify(
-        {
-            "status": "ok",
-            "service": "dr-convnext",
-            "model_loaded": is_model_loaded(),
-            "models_loaded": {"dr": is_model_loaded(), "glaucoma": False, "hr": False},
-        }
-    )
+    return jsonify({"status": "ok" if is_model_loaded() else "model_error"})
 
 
 @app.post("/predict")

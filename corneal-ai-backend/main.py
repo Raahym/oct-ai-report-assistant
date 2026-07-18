@@ -106,11 +106,7 @@ def root():
 
 @app.get("/health")
 def health():
-    return {
-        "status": "ok",
-        "model_loaded": bool(models_dict),
-        "error": bool(model_error),
-    }
+    return {"status": "ok"}
 
 
 @app.post("/predict", response_model=CornealPrediction)

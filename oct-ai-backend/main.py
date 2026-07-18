@@ -629,11 +629,7 @@ def root():
 
 @app.get("/health")
 def health():
-    return {
-        "status": "ok" if model is not None else "model_error",
-        "model_loaded": model is not None,
-        "error": bool(model_error),
-    }
+    return {"status": "ok" if model is not None else "model_error"}
 
 
 @app.post("/reports/check")

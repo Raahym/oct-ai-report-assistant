@@ -179,11 +179,7 @@ def root():
 
 @app.get("/health")
 def health():
-    return {
-        "status": "ok",
-        "model_loaded": model is not None,
-        "error": bool(model_error),
-    }
+    return {"status": "ok"}
 
 
 @app.post("/predict")
