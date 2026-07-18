@@ -85,7 +85,14 @@ export async function requireGatewayModuleAccess(
   });
 
   const entitlementResult = await verifyCommercialEntitlement(admin, clinicId, moduleId);
-  if (entitlementResult) return entitlementResult;
+  if (entitlementResult !== undefined) {
+    if (entitlementResult) return entitlementResult;
+    return {
+      userId: authResult.user.id,
+      clinicId,
+      role: typeof authResult.profile.role === "string" ? authResult.profile.role : null
+    };
+  }
 
   const { data, error } = await admin
     .from("clinic_modules")
