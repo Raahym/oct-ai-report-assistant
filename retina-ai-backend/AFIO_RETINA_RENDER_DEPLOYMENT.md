@@ -1,6 +1,6 @@
 # AFIO Retina Backend Render Deployment
 
-Date: 2026-07-12
+Date: 2026-07-18
 
 ## Render Services
 
@@ -10,7 +10,9 @@ afio-retina-glaucoma-backend
 afio-retina-hr-backend
 ```
 
-`afio-retina-ai-backend` may remain as a legacy combined fallback, but the approval/demo architecture should use the split services above so each process loads only one model.
+`afio-retina-ai-backend` may remain as a legacy combined fallback, but the approval/demo architecture should use the split services above so each process loads only one non-Grad-CAM model.
+
+Grad-CAM and other heavier PyTorch workers should run on AWS when Render cannot handle them reliably.
 
 ## Endpoints
 
@@ -47,11 +49,22 @@ Required files:
 
 ```text
 best_efficientnet_model.pth
+best_convnext_model.pth
 glaucoma_model.onnx
 glaucoma_model.onnx.data
 hr_efficientnet_model.onnx
 smoke_test.onnx
 smoke_test.onnx.data
+```
+
+Current final Retina mapping from Arsal:
+
+```text
+smoke_test.onnx             -> DR screening ONNX, Render, 224x224 input
+glaucoma_model.onnx         -> Glaucoma ONNX, AWS target for current setup, 640x640 input
+hr_efficientnet_model.onnx  -> Hypertensive retinopathy ONNX, Render, 300x300 input
+best_convnext_model.pth     -> DR Grad-CAM PyTorch checkpoint, AWS
+best_efficientnet_model.pth -> HR source/checkpoint artifact, not used by Render runtime
 ```
 
 ## Deployment Mode
@@ -64,7 +77,7 @@ ORT_NUM_THREADS=1
 RETINA_SERVICE=dr | glaucoma | hr
 ```
 
-This keeps the core screening APIs deployable without installing the heavier Python/Torch Grad-CAM service. Grad-CAM can be enabled later after adding the Python runtime/dependencies strategy.
+This keeps the core screening APIs deployable without installing the heavier Python/Torch Grad-CAM service. Do not deploy `best_convnext_model.pth` as the normal DR Render model; it is the DR Grad-CAM/AWS artifact.
 
 ## Frontend Hook
 

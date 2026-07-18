@@ -22,9 +22,11 @@ const MODEL_PATH =
   process.env.RETINA_DR_MODEL_PATH ||
   path.join(__dirname, "..", "models", "smoke_test.onnx");
 const DR_MODEL_KIND = (process.env.RETINA_DR_MODEL_KIND || "legacy").toLowerCase();
+const DR_INPUT_SIZE = Number(process.env.RETINA_DR_INPUT_SIZE || 224);
 const GLAUCOMA_MODEL_PATH =
   process.env.RETINA_GLAUCOMA_MODEL_PATH ||
   path.join(__dirname, "..", "models", "glaucoma_model.onnx");
+const GLAUCOMA_INPUT_SIZE = Number(process.env.RETINA_GLAUCOMA_INPUT_SIZE || 640);
 const HR_MODEL_PATH =
   process.env.RETINA_HR_MODEL_PATH ||
   path.join(__dirname, "..", "models", "hr_efficientnet_model.onnx");
@@ -158,14 +160,14 @@ async function preprocessImageDR(buffer) {
   }
 
   const { data } = await sharp(buffer)
-    .resize(300, 300)
+    .resize(DR_INPUT_SIZE, DR_INPUT_SIZE)
     .removeAlpha()
     .toColorspace("srgb")
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  const float32Data = new Float32Array(3 * 300 * 300);
-  const pixelCount = 300 * 300;
+  const float32Data = new Float32Array(3 * DR_INPUT_SIZE * DR_INPUT_SIZE);
+  const pixelCount = DR_INPUT_SIZE * DR_INPUT_SIZE;
 
   for (let i = 0; i < pixelCount; i++) {
     float32Data[i] = data[i * 3] / 255;
@@ -173,7 +175,7 @@ async function preprocessImageDR(buffer) {
     float32Data[2 * pixelCount + i] = data[i * 3 + 2] / 255;
   }
 
-  return new ort.Tensor("float32", float32Data, [1, 3, 300, 300]);
+  return new ort.Tensor("float32", float32Data, [1, 3, DR_INPUT_SIZE, DR_INPUT_SIZE]);
 }
 
 async function preprocessImageHREfficientNet(buffer) {
@@ -209,14 +211,14 @@ function sigmoid(logit) {
 
 async function preprocessImageGlaucoma(buffer) {
   const { data } = await sharp(buffer)
-    .resize(512, 512)
+    .resize(GLAUCOMA_INPUT_SIZE, GLAUCOMA_INPUT_SIZE)
     .removeAlpha()
     .toColorspace("srgb")
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  const float32Data = new Float32Array(3 * 512 * 512);
-  const pixelCount = 512 * 512;
+  const float32Data = new Float32Array(3 * GLAUCOMA_INPUT_SIZE * GLAUCOMA_INPUT_SIZE);
+  const pixelCount = GLAUCOMA_INPUT_SIZE * GLAUCOMA_INPUT_SIZE;
 
   for (let i = 0; i < pixelCount; i++) {
     float32Data[i] = data[i * 3] / 255;
@@ -224,7 +226,7 @@ async function preprocessImageGlaucoma(buffer) {
     float32Data[2 * pixelCount + i] = data[i * 3 + 2] / 255;
   }
 
-  return new ort.Tensor("float32", float32Data, [1, 3, 512, 512]);
+  return new ort.Tensor("float32", float32Data, [1, 3, GLAUCOMA_INPUT_SIZE, GLAUCOMA_INPUT_SIZE]);
 }
 
 function regionBrightness(data, imageSize, startX, startY, regionSize) {
@@ -403,15 +405,7 @@ function checkSessionReady(res, modelName, modelSession) {
 }
 
 app.get("/health", (req, res) => {
-  res.json({
-    status: "ok",
-    service: RETINA_SERVICE,
-    models_loaded: {
-      dr: Boolean(session),
-      glaucoma: Boolean(glaucomaSession),
-      hr: Boolean(hrSession),
-    },
-  });
+  res.json({ status: "ok" });
 });
 
 app.post("/predict", upload.single("image"), async (req, res) => {
@@ -513,14 +507,26 @@ app.post("/predict-glaucoma", upload.single("image"), async (req, res) => {
     const outputTensor = results[glaucomaSession.outputNames[0]];
 
     const data = outputTensor.data;
-    const pixelCount = 512 * 512;
+    const outputShape = outputTensor.dims || [];
+    const channelCount = outputShape[1] || 2;
+    const height = outputShape[2] || GLAUCOMA_INPUT_SIZE;
+    const width = outputShape[3] || GLAUCOMA_INPUT_SIZE;
+    const pixelCount = height * width;
 
     let discPixels = 0;
     let cupPixels = 0;
 
-    for (let i = 0; i < pixelCount; i++) {
-      if (data[i] >= 0.5) discPixels++;
-      if (data[pixelCount + i] >= 0.5) cupPixels++;
+    if (channelCount >= 2 && data.length >= pixelCount * 2) {
+      for (let i = 0; i < pixelCount; i++) {
+        const discScore = data[i];
+        const cupScore = data[pixelCount + i];
+        if (discScore >= 0.5) discPixels++;
+        if (cupScore >= 0.5) cupPixels++;
+      }
+    } else {
+      for (let i = 0; i < data.length; i++) {
+        if (data[i] >= 0.5) discPixels++;
+      }
     }
 
     const cdr = discPixels === 0 ? 0 : cupPixels / discPixels;
@@ -637,11 +643,11 @@ async function start() {
 
   if (serviceEnabled("dr")) {
     session = await ort.InferenceSession.create(MODEL_PATH, ORT_SESSION_OPTIONS);
-    checkModelInputSize(`DR (${path.basename(MODEL_PATH)})`, session, DR_MODEL_KIND === "convnext" ? 224 : 300);
+    checkModelInputSize(`DR (${path.basename(MODEL_PATH)})`, session, DR_MODEL_KIND === "convnext" ? 224 : DR_INPUT_SIZE);
   }
   if (serviceEnabled("glaucoma")) {
     glaucomaSession = await ort.InferenceSession.create(GLAUCOMA_MODEL_PATH, ORT_SESSION_OPTIONS);
-    checkModelInputSize(`Glaucoma (${path.basename(GLAUCOMA_MODEL_PATH)})`, glaucomaSession, 512);
+    checkModelInputSize(`Glaucoma (${path.basename(GLAUCOMA_MODEL_PATH)})`, glaucomaSession, GLAUCOMA_INPUT_SIZE);
   }
   if (serviceEnabled("hr")) {
     hrSession = await ort.InferenceSession.create(HR_MODEL_PATH, ORT_SESSION_OPTIONS);

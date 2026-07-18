@@ -69,10 +69,22 @@ For a proper model-quality decision, compare the old DR ONNX and new ConvNeXt ch
 
 Arsal clarified that the Drive folder is the final Retina model package and that `smoke_test.onnx` is the DR ONNX file. The folder still contains the same seven model files listed above, including `best_convnext_model.pth`.
 
-The Render DR service remains configured for the optimized ConvNeXt ONNX path:
+The earlier Render ConvNeXt export path is no longer the target production DR screening path. `best_convnext_model.pth` belongs with the DR Grad-CAM/AWS worker, not the ordinary Render DR `/predict` service.
 
-`RETINA_DR_MODEL_KIND=convnext`
+The Render DR service now uses:
 
-`RETINA_DR_MODEL_PATH=../models/best_convnext_model.quant.onnx`
+`RETINA_DR_MODEL_KIND=legacy`
 
-To avoid relying on ignored local files, the DR Render build now downloads the Drive folder and runs `export_convnext_onnx.py` during build. This generates `best_convnext_model.quant.onnx` from `best_convnext_model.pth` before `node server.js` starts.
+`RETINA_DR_INPUT_SIZE=224`
+
+`RETINA_DR_MODEL_PATH=../models/smoke_test.onnx`
+
+Fresh ONNX inspection showed the final Drive files use:
+
+| File | Input | Output |
+| --- | --- | --- |
+| `smoke_test.onnx` | `[1, 3, 224, 224]` | `[1, 5]` |
+| `glaucoma_model.onnx` | `[1, 3, 640, 640]` | `[1, 2, 640, 640]` |
+| `hr_efficientnet_model.onnx` | `[1, 3, 300, 300]` | `[1, 1]` |
+
+The Retina backend was updated to preprocess DR at 224 and glaucoma at 640 so the final models are not fed with the old dimensions.
