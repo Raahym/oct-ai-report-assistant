@@ -7,6 +7,7 @@ const ort = require("onnxruntime-node");
 const FormData = require("form-data");
 const fetch = require("node-fetch");
 const { spawn } = require("child_process");
+const fs = require("fs");
 
 const PORT = Number(process.env.PORT || 3000);
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
@@ -18,17 +19,36 @@ const ENABLE_PUBLIC_DEMO = process.env.ENABLE_PUBLIC_DEMO === "true";
 const MAX_SIGNATURE_AGE_MS = Number(process.env.AI_GATEWAY_SIGNATURE_MAX_AGE_MS || 5 * 60 * 1000);
 const seenGatewayRequestIds = new Map();
 const RETINA_SERVICE = (process.env.RETINA_SERVICE || "all").toLowerCase();
-const DEFAULT_DR_MODEL_PATH = path.join(__dirname, "..", "models", "smoke_test.onnx");
+const MODELS_DIR = path.join(__dirname, "..", "models");
+
+function findModelFile(dir, fileName) {
+  if (!fs.existsSync(dir)) return null;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isFile() && entry.name === fileName) return entryPath;
+    if (entry.isDirectory()) {
+      const nested = findModelFile(entryPath, fileName);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
+function modelPath(fileName) {
+  return findModelFile(MODELS_DIR, fileName) || path.join(MODELS_DIR, fileName);
+}
+
+const DEFAULT_DR_MODEL_PATH = modelPath("smoke_test.onnx");
 const DR_MODEL_KIND = "legacy";
 const MODEL_PATH = DEFAULT_DR_MODEL_PATH;
 const DR_INPUT_SIZE = Number(process.env.RETINA_DR_INPUT_SIZE || 224);
 const GLAUCOMA_MODEL_PATH =
   process.env.RETINA_GLAUCOMA_MODEL_PATH ||
-  path.join(__dirname, "..", "models", "glaucoma_model.onnx");
+  modelPath("glaucoma_model.onnx");
 const GLAUCOMA_INPUT_SIZE = Number(process.env.RETINA_GLAUCOMA_INPUT_SIZE || 640);
 const HR_MODEL_PATH =
   process.env.RETINA_HR_MODEL_PATH ||
-  path.join(__dirname, "..", "models", "hr_efficientnet_model.onnx");
+  modelPath("hr_efficientnet_model.onnx");
 const GRADCAM_SERVICE_URL = process.env.RETINA_GRADCAM_SERVICE_URL || "http://localhost:5000/gradcam";
 const ORT_SESSION_OPTIONS = {
   executionProviders: ["cpu"],
