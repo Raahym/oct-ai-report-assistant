@@ -347,7 +347,7 @@ function ClinicalStatsPanel({ moduleId }: { moduleId: ModuleId }) {
           </div>
         ))}
       </div>
-      <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
+      <div className="mt-5 grid gap-5">
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <p className="font-black text-slate-950">Screenings over time</p>
           <div className="mt-4 flex h-44 items-end gap-2">
@@ -363,23 +363,25 @@ function ClinicalStatsPanel({ moduleId }: { moduleId: ModuleId }) {
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <p className="font-black text-slate-950">Output mix</p>
-          <div className="mt-4 space-y-3">
-            {Object.entries(classCounts).length ? Object.entries(classCounts).map(([label, value]) => (
-              <div key={label}>
-                <div className="flex justify-between text-xs font-bold text-slate-600">
-                  <span>{label}</span>
-                  <span>{value}</span>
+          <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(220px,320px)] lg:items-start">
+            <div className="space-y-3">
+              {Object.entries(classCounts).length ? Object.entries(classCounts).map(([label, value]) => (
+                <div key={label}>
+                  <div className="flex justify-between gap-3 text-xs font-bold text-slate-600">
+                    <span className="min-w-0 break-words">{label}</span>
+                    <span>{value}</span>
+                  </div>
+                  <div className="mt-1 h-2 rounded-full bg-slate-100">
+                    <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${(value / maxClassCount) * 100}%` }} />
+                  </div>
                 </div>
-                <div className="mt-1 h-2 rounded-full bg-slate-100">
-                  <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${(value / maxClassCount) * 100}%` }} />
-                </div>
-              </div>
-            )) : <p className="text-sm font-semibold text-slate-500">No AI outputs in this filter yet.</p>}
-          </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <Info label="OD / Right" value={String(eyeCounts.Right ?? 0)} />
-            <Info label="OS / Left" value={String(eyeCounts.Left ?? 0)} />
-            <Info label="Grad-CAM coverage" value={`${heatmapRate}%`} />
+              )) : <p className="text-sm font-semibold text-slate-500">No AI outputs in this filter yet.</p>}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+              <Info label="OD / Right" value={String(eyeCounts.Right ?? 0)} />
+              <Info label="OS / Left" value={String(eyeCounts.Left ?? 0)} />
+              <Info label="Grad-CAM coverage" value={`${heatmapRate}%`} />
+            </div>
           </div>
         </div>
       </div>
@@ -4531,9 +4533,9 @@ function Textarea({
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="mt-4">
-      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-slate-900">{value}</p>
+    <div>
+      <p className="text-xs font-bold uppercase leading-5 text-slate-500">{label}</p>
+      <p className="mt-1 text-base font-black text-slate-900">{value}</p>
     </div>
   );
 }
