@@ -103,8 +103,6 @@ def health():
         {
             "status": "ok",
             "service": "dr-convnext",
-            "model": MODEL_NAME,
-            "model_path": os.path.basename(MODEL_PATH),
             "model_loaded": is_model_loaded(),
             "models_loaded": {"dr": is_model_loaded(), "glaucoma": False, "hr": False},
         }

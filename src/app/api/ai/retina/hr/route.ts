@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 const limiter = createInMemoryRateLimiter(10 * 60 * 1000, 20);
 
 export async function POST(request: NextRequest) {
-  const env = requiredGatewayEnv(["RETINA_HR_BACKEND_URL", "RETINA_BACKEND_URL"]);
+  const env = requiredGatewayEnv(["RETINA_HR_BACKEND_URL"]);
   if (!env) return jsonError("Retina hypertensive-retinopathy gateway is not configured.", 500);
 
   const accessResult = await requireGatewayModuleAccess(request, env, "retina");

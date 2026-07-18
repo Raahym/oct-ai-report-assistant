@@ -44,6 +44,7 @@ app.add_middleware(
 model = None
 model_error: str | None = None
 AI_GATEWAY_SHARED_SECRET = os.getenv("AI_GATEWAY_SHARED_SECRET", "")
+SEEN_GATEWAY_REQUEST_IDS: dict[str, float] = {}
 
 
 def get_model():
@@ -65,8 +66,9 @@ def get_model():
 async def verify_ai_gateway_signature(request: Request, file: UploadFile) -> None:
     timestamp = request.headers.get("X-AFIO-Timestamp")
     signature = request.headers.get("X-AFIO-Signature")
+    request_id = request.headers.get("X-AFIO-Request-Id")
 
-    if not timestamp or not signature:
+    if not timestamp or not signature or not request_id:
         raise HTTPException(status_code=401, detail="Missing AFIO signature headers.")
 
     try:
@@ -80,16 +82,29 @@ async def verify_ai_gateway_signature(request: Request, file: UploadFile) -> Non
     if not AI_GATEWAY_SHARED_SECRET:
         raise HTTPException(status_code=500, detail="AI gateway shared secret is not configured.")
 
+    prune_seen_gateway_request_ids()
+    if request_id in SEEN_GATEWAY_REQUEST_IDS:
+        raise HTTPException(status_code=409, detail="Duplicate AFIO gateway request.")
+
     file_bytes = await file.read()
     expected_signature = hmac.new(
         AI_GATEWAY_SHARED_SECRET.encode("utf-8"),
-        f"{timestamp}.{base64.b64encode(file_bytes).decode('ascii')}".encode("utf-8"),
+        f"{timestamp}.{request_id}.{base64.b64encode(file_bytes).decode('ascii')}".encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
     await file.seek(0)
 
     if not hmac.compare_digest(expected_signature, signature):
         raise HTTPException(status_code=403, detail="Invalid AFIO signature.")
+
+    SEEN_GATEWAY_REQUEST_IDS[request_id] = time.time()
+
+
+def prune_seen_gateway_request_ids() -> None:
+    cutoff = time.time() - 5 * 60
+    for request_id, seen_at in list(SEEN_GATEWAY_REQUEST_IDS.items()):
+        if seen_at < cutoff:
+            SEEN_GATEWAY_REQUEST_IDS.pop(request_id, None)
 
 
 def read_image_bytes(image_bytes: bytes) -> Image.Image:
@@ -158,11 +173,6 @@ def root():
     return {
         "status": "ok",
         "service": "AFIO Corneal Ulcer AI Backend",
-        "model_name": MODEL_NAME,
-        "model_version": MODEL_VERSION,
-        "classes": CLASS_NAMES,
-        "model_loaded": model is not None,
-        "lazy_model_loading": model is None,
         "disclaimer": DISCLAIMER,
     }
 
@@ -172,8 +182,7 @@ def health():
     return {
         "status": "ok",
         "model_loaded": model is not None,
-        "model_path": str(MODEL_PATH),
-        "error": model_error,
+        "error": bool(model_error),
     }
 
 

@@ -12,7 +12,7 @@ import { createInMemoryRateLimiter, rateLimitKey } from "@/lib/rate-limit";
 export const runtime = "nodejs";
 
 const limiter = createInMemoryRateLimiter(10 * 60 * 1000, 20);
-const BACKEND_URL_ENV_NAMES = ["RETINA_DR_GRADCAM_BACKEND_URL", "RETINA_GRADCAM_BACKEND_URL"];
+const BACKEND_URL_ENV_NAMES = ["RETINA_DR_GRADCAM_BACKEND_URL"];
 
 export async function POST(request: NextRequest) {
   const baseEnv = requiredGatewayBaseEnv();

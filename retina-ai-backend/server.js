@@ -14,7 +14,9 @@ const PYTHON_BIN = process.env.PYTHON_BIN || "python";
 const SKIP_GRADCAM = process.env.SKIP_GRADCAM === "true";
 const AI_GATEWAY_SHARED_SECRET = process.env.AI_GATEWAY_SHARED_SECRET || "";
 const REQUIRE_AI_GATEWAY_SIGNATURE = process.env.REQUIRE_AI_GATEWAY_SIGNATURE !== "false";
+const ENABLE_PUBLIC_DEMO = process.env.ENABLE_PUBLIC_DEMO === "true";
 const MAX_SIGNATURE_AGE_MS = Number(process.env.AI_GATEWAY_SIGNATURE_MAX_AGE_MS || 5 * 60 * 1000);
+const seenGatewayRequestIds = new Map();
 const RETINA_SERVICE = (process.env.RETINA_SERVICE || "all").toLowerCase();
 const MODEL_PATH =
   process.env.RETINA_DR_MODEL_PATH ||
@@ -59,7 +61,9 @@ app.use((req, res, next) => {
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
-app.use(express.static(path.join(__dirname, "public")));
+if (ENABLE_PUBLIC_DEMO) {
+  app.use(express.static(path.join(__dirname, "public")));
+}
 
 let session;
 let glaucomaSession;
@@ -80,7 +84,8 @@ function verifyGatewaySignature(req, res) {
 
   const timestamp = req.get("X-AFIO-Timestamp");
   const signature = req.get("X-AFIO-Signature");
-  if (!timestamp || !signature) {
+  const requestId = req.get("X-AFIO-Request-Id");
+  if (!timestamp || !signature || !requestId) {
     res.status(401).json({ error: "Missing AFIO gateway signature" });
     return false;
   }
@@ -91,10 +96,16 @@ function verifyGatewaySignature(req, res) {
     return false;
   }
 
+  pruneSeenRequestIds();
+  if (seenGatewayRequestIds.has(requestId)) {
+    res.status(409).json({ error: "Duplicate AFIO gateway request" });
+    return false;
+  }
+
   const payload = req.file.buffer.toString("base64");
   const expectedSignature = crypto
     .createHmac("sha256", AI_GATEWAY_SHARED_SECRET)
-    .update(`${timestamp}.${payload}`)
+    .update(`${timestamp}.${requestId}.${payload}`)
     .digest("hex");
 
   const expected = Buffer.from(expectedSignature, "hex");
@@ -104,7 +115,15 @@ function verifyGatewaySignature(req, res) {
     return false;
   }
 
+  seenGatewayRequestIds.set(requestId, Date.now());
   return true;
+}
+
+function pruneSeenRequestIds() {
+  const cutoff = Date.now() - MAX_SIGNATURE_AGE_MS;
+  for (const [requestId, seenAt] of seenGatewayRequestIds.entries()) {
+    if (seenAt < cutoff) seenGatewayRequestIds.delete(requestId);
+  }
 }
 
 async function preprocessImageDR(buffer) {
@@ -387,9 +406,6 @@ app.get("/health", (req, res) => {
   res.json({
     status: "ok",
     service: RETINA_SERVICE,
-    dr_model_kind: DR_MODEL_KIND,
-    dr_model_path: path.basename(MODEL_PATH),
-    gradcam_enabled: Boolean(gradcamProcess) && !SKIP_GRADCAM,
     models_loaded: {
       dr: Boolean(session),
       glaucoma: Boolean(glaucomaSession),

@@ -54,6 +54,7 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", SMTP_FROM_EMAIL)
 RESEND_FROM_NAME = os.getenv("RESEND_FROM_NAME", SMTP_FROM_NAME)
 AI_GATEWAY_SHARED_SECRET = os.getenv("AI_GATEWAY_SHARED_SECRET", "")
+SEEN_GATEWAY_REQUEST_IDS: dict[str, float] = {}
 ACCESS_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
 
 app = FastAPI(title="OCT AI Backend", version=MODEL_VERSION)
@@ -239,8 +240,9 @@ def gradcam_prediction_and_overlay(image: Image.Image, image_tensor: torch.Tenso
 async def verify_ai_gateway_signature(request: Request, file: UploadFile) -> None:
     timestamp = request.headers.get("X-AFIO-Timestamp")
     signature = request.headers.get("X-AFIO-Signature")
+    request_id = request.headers.get("X-AFIO-Request-Id")
 
-    if not timestamp or not signature:
+    if not timestamp or not signature or not request_id:
         raise HTTPException(status_code=401, detail="Missing AFIO signature headers.")
 
     try:
@@ -255,11 +257,15 @@ async def verify_ai_gateway_signature(request: Request, file: UploadFile) -> Non
     if not AI_GATEWAY_SHARED_SECRET:
         raise HTTPException(status_code=500, detail="AI gateway shared secret is not configured.")
 
+    prune_seen_gateway_request_ids()
+    if request_id in SEEN_GATEWAY_REQUEST_IDS:
+        raise HTTPException(status_code=409, detail="Duplicate AFIO gateway request.")
+
     image_bytes = await file.read()
     payload = base64.b64encode(image_bytes).decode("ascii")
     expected_signature = hmac.new(
         AI_GATEWAY_SHARED_SECRET.encode("utf-8"),
-        f"{timestamp}.{payload}".encode("utf-8"),
+        f"{timestamp}.{request_id}.{payload}".encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
 
@@ -267,6 +273,15 @@ async def verify_ai_gateway_signature(request: Request, file: UploadFile) -> Non
 
     if not hmac.compare_digest(expected_signature, signature):
         raise HTTPException(status_code=403, detail="Invalid AFIO signature.")
+
+    SEEN_GATEWAY_REQUEST_IDS[request_id] = time.time()
+
+
+def prune_seen_gateway_request_ids() -> None:
+    cutoff = time.time() - 5 * 60
+    for request_id, seen_at in list(SEEN_GATEWAY_REQUEST_IDS.items()):
+        if seen_at < cutoff:
+            SEEN_GATEWAY_REQUEST_IDS.pop(request_id, None)
 
 
 async def read_oct_upload(file: UploadFile) -> Image.Image:
@@ -600,7 +615,7 @@ def send_plain_email(to_email: str, subject: str, text_content: str) -> None:
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(message)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Email sending failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail="Email sending failed.") from exc
 
 
 @app.get("/")
@@ -608,8 +623,6 @@ def root():
     return {
         "status": "ok",
         "service": "OCT AI Backend",
-        "model_name": MODEL_NAME,
-        "model_version": MODEL_VERSION,
         "disclaimer": DISCLAIMER,
     }
 
@@ -619,9 +632,7 @@ def health():
     return {
         "status": "ok" if model is not None else "model_error",
         "model_loaded": model is not None,
-        "model_path": str(MODEL_PATH),
-        "device": str(device),
-        "error": model_error,
+        "error": bool(model_error),
     }
 
 
