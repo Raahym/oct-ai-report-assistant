@@ -221,6 +221,9 @@ export async function forwardSignedUpload(input: {
     fileSizeBytes: input.file.size,
     contentType: input.file.type
   });
+  if (response.ok) {
+    await incrementEntitlementUsage(input.audit);
+  }
 
   const responseHeaders = new Headers();
   response.headers.forEach((value, key) => {
@@ -234,6 +237,33 @@ export async function forwardSignedUpload(input: {
     statusText: response.statusText,
     headers: responseHeaders
   });
+}
+
+async function incrementEntitlementUsage(
+  audit:
+    | {
+        supabaseUrl: string;
+        serviceRoleKey: string;
+        moduleId: string;
+        userId: string;
+        clinicId: string | null;
+        route: string;
+      }
+    | undefined
+) {
+  if (!audit?.clinicId) return;
+
+  try {
+    const admin = createClient(audit.supabaseUrl, audit.serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+    await admin.rpc("increment_clinic_module_scan_usage", {
+      target_clinic_id: audit.clinicId,
+      target_module_id: audit.moduleId
+    });
+  } catch {
+    // Quota accounting should be monitored, but it must not turn a successful model response into a failed clinical request.
+  }
 }
 
 async function recordGatewayRequest(

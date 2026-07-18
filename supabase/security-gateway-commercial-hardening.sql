@@ -89,6 +89,24 @@ on ai_gateway_requests(user_id, created_at desc);
 create index if not exists ai_gateway_requests_module_created_idx
 on ai_gateway_requests(module_id, created_at desc);
 
+create or replace function increment_clinic_module_scan_usage(
+  target_clinic_id uuid,
+  target_module_id text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update clinic_module_entitlements
+  set monthly_scan_count = monthly_scan_count + 1,
+      updated_at = now()
+  where clinic_id = target_clinic_id
+    and module_id = target_module_id;
+end;
+$$;
+
 alter table clinic_module_entitlements enable row level security;
 alter table model_registry enable row level security;
 alter table ai_gateway_requests enable row level security;

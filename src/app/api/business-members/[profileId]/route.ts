@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { canManagePlatformMembers, isPlatformOwner } from "@/lib/platform-members";
 
 const permissionKeys = ["manage_members", "add_hospitals", "edit_hospitals", "suspend_hospitals", "manage_modules", "delete_hospitals"] as const;
 
@@ -30,8 +31,12 @@ async function assertMemberManager(request: NextRequest, admin: any) {
     .eq("id", authData.user.id)
     .maybeSingle();
   if (error || requester?.role !== "afio_admin") return { error: jsonError("Only Business Admin can manage members.", 403) };
-  const isOwner = String(requester.email ?? "").toLowerCase() === "raahymm@gmail.com";
-  if (!isOwner && requester.business_permissions?.manage_members !== true) {
+  const canManageMembers = await canManagePlatformMembers(
+    admin,
+    { id: authData.user.id, email: requester.email ?? authData.user.email },
+    requester.business_permissions
+  );
+  if (!canManageMembers) {
     return { error: jsonError("Your Business Admin account cannot manage members.", 403) };
   }
   return { userId: authData.user.id };
@@ -59,7 +64,7 @@ export async function PATCH(
     .maybeSingle();
   if (targetError || !target) return jsonError("Business member not found.", 404);
   if (target.role !== "afio_admin") return jsonError("Only AFIO business members can receive business permissions.");
-  if (String(target.email ?? "").toLowerCase() === "raahymm@gmail.com") return jsonError("Owner permissions cannot be changed.", 403);
+  if (await isPlatformOwner(admin, { id: target.id, email: target.email })) return jsonError("Owner permissions cannot be changed.", 403);
 
   const { data: profile, error } = await admin
     .from("profiles")
@@ -70,6 +75,22 @@ export async function PATCH(
   if (error) {
     console.error("Business member permission update failed.", error);
     return jsonError("Could not update business member permissions.", 500);
+  }
+
+  const { error: platformMemberError } = await admin
+    .from("platform_members")
+    .upsert({
+      user_id: profileId,
+      role: "business_admin",
+      permissions,
+      is_active: true
+    }, { onConflict: "user_id" });
+  if (platformMemberError) {
+    const message = typeof platformMemberError.message === "string" ? platformMemberError.message.toLowerCase() : "";
+    if (!message.includes("does not exist") && !message.includes("schema cache")) {
+      console.error("Platform member permission update failed.", platformMemberError);
+      return jsonError("Could not update platform member permissions.", 500);
+    }
   }
 
   await admin.from("audit_logs").insert({

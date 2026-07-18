@@ -1,4 +1,8 @@
 import os
+import base64
+import hashlib
+import hmac
+import time
 from io import BytesIO
 
 import numpy as np
@@ -18,6 +22,10 @@ MODEL_PATH = os.environ.get(
 MODEL_NAME = os.environ.get("RETINA_DR_CONVNEXT_ARCH", "convnext_base")
 IMAGE_SIZE = int(os.environ.get("RETINA_DR_IMAGE_SIZE", "224"))
 TORCH_THREADS = int(os.environ.get("TORCH_NUM_THREADS", "1"))
+AI_GATEWAY_SHARED_SECRET = os.environ.get("AI_GATEWAY_SHARED_SECRET", "")
+REQUIRE_AI_GATEWAY_SIGNATURE = os.environ.get("REQUIRE_AI_GATEWAY_SIGNATURE", "true").lower() != "false"
+MAX_SIGNATURE_AGE_MS = int(os.environ.get("AI_GATEWAY_SIGNATURE_MAX_AGE_MS", str(5 * 60 * 1000)))
+SEEN_GATEWAY_REQUEST_IDS = {}
 
 CLASS_LABELS = {
     0: "No DR",
@@ -97,6 +105,50 @@ def preprocess_image(file_bytes):
     return tensor.unsqueeze(0)
 
 
+def prune_seen_gateway_request_ids():
+    cutoff = time.time() - (MAX_SIGNATURE_AGE_MS / 1000)
+    for request_id, seen_at in list(SEEN_GATEWAY_REQUEST_IDS.items()):
+        if seen_at < cutoff:
+            SEEN_GATEWAY_REQUEST_IDS.pop(request_id, None)
+
+
+def verify_ai_gateway_signature(file_bytes):
+    if not REQUIRE_AI_GATEWAY_SIGNATURE:
+        return None
+
+    if not AI_GATEWAY_SHARED_SECRET:
+        return jsonify({"error": "AI gateway shared secret is not configured"}), 500
+
+    timestamp = request.headers.get("X-AFIO-Timestamp")
+    signature = request.headers.get("X-AFIO-Signature")
+    request_id = request.headers.get("X-AFIO-Request-Id")
+    if not timestamp or not signature or not request_id:
+        return jsonify({"error": "Missing AFIO gateway signature"}), 401
+
+    try:
+        timestamp_ms = int(timestamp)
+    except ValueError:
+        return jsonify({"error": "Invalid AFIO gateway timestamp"}), 403
+
+    if abs(int(time.time() * 1000) - timestamp_ms) > MAX_SIGNATURE_AGE_MS:
+        return jsonify({"error": "Invalid or expired AFIO gateway signature"}), 403
+
+    prune_seen_gateway_request_ids()
+    if request_id in SEEN_GATEWAY_REQUEST_IDS:
+        return jsonify({"error": "Duplicate AFIO gateway request"}), 409
+
+    expected_signature = hmac.new(
+        AI_GATEWAY_SHARED_SECRET.encode("utf-8"),
+        f"{timestamp}.{request_id}.{base64.b64encode(file_bytes).decode('ascii')}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected_signature, signature):
+        return jsonify({"error": "Invalid AFIO gateway signature"}), 403
+
+    SEEN_GATEWAY_REQUEST_IDS[request_id] = time.time()
+    return None
+
+
 @app.get("/health")
 def health():
     return jsonify(
@@ -114,9 +166,14 @@ def predict():
     uploaded = request.files.get("image")
     if uploaded is None:
         return jsonify({"error": "No image file uploaded"}), 400
+    file_bytes = uploaded.read()
+
+    signature_error = verify_ai_gateway_signature(file_bytes)
+    if signature_error is not None:
+        return signature_error
 
     try:
-        tensor = preprocess_image(uploaded.read())
+        tensor = preprocess_image(file_bytes)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except Exception:

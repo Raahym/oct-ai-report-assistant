@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { canManagePlatformMembers } from "@/lib/platform-members";
 
 const permissionKeys = ["manage_members", "add_hospitals", "edit_hospitals", "suspend_hospitals", "manage_modules", "delete_hospitals"] as const;
 type BusinessPermissionKey = typeof permissionKeys[number];
@@ -55,8 +56,12 @@ async function assertMemberManager(request: NextRequest, admin: any) {
     .eq("id", authData.user.id)
     .maybeSingle();
   if (error || requester?.role !== "afio_admin") return { error: jsonError("Only Business Admin can invite members.", 403) };
-  const isOwner = String(requester.email ?? "").toLowerCase() === "raahymm@gmail.com";
-  if (!isOwner && requester.business_permissions?.manage_members !== true) {
+  const canManageMembers = await canManagePlatformMembers(
+    admin,
+    { id: authData.user.id, email: requester.email ?? authData.user.email },
+    requester.business_permissions
+  );
+  if (!canManageMembers) {
     return { error: jsonError("Your Business Admin account cannot invite members.", 403) };
   }
   return { userId: authData.user.id };
@@ -145,6 +150,19 @@ export async function POST(request: NextRequest) {
       .select("*")
       .single();
     if (profileError) throw profileError;
+
+    const { error: platformMemberError } = await admin
+      .from("platform_members")
+      .upsert({
+        user_id: profile.id,
+        role: "business_admin",
+        permissions,
+        is_active: true
+      }, { onConflict: "user_id" });
+    if (platformMemberError) {
+      const message = typeof platformMemberError.message === "string" ? platformMemberError.message.toLowerCase() : "";
+      if (!message.includes("does not exist") && !message.includes("schema cache")) throw platformMemberError;
+    }
 
     const emailResult = await sendInviteEmail({ to: email, fullName, password: temporaryPassword, permissions });
     await admin.from("audit_logs").insert({
