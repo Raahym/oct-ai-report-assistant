@@ -1,4 +1,5 @@
 const path = require("path");
+const crypto = require("crypto");
 const express = require("express");
 const multer = require("multer");
 const sharp = require("sharp");
@@ -11,6 +12,9 @@ const PORT = Number(process.env.PORT || 3000);
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 const PYTHON_BIN = process.env.PYTHON_BIN || "python";
 const SKIP_GRADCAM = process.env.SKIP_GRADCAM === "true";
+const AI_GATEWAY_SHARED_SECRET = process.env.AI_GATEWAY_SHARED_SECRET || "";
+const REQUIRE_AI_GATEWAY_SIGNATURE = process.env.REQUIRE_AI_GATEWAY_SIGNATURE !== "false";
+const MAX_SIGNATURE_AGE_MS = Number(process.env.AI_GATEWAY_SIGNATURE_MAX_AGE_MS || 5 * 60 * 1000);
 const RETINA_SERVICE = (process.env.RETINA_SERVICE || "all").toLowerCase();
 const MODEL_PATH =
   process.env.RETINA_DR_MODEL_PATH ||
@@ -64,6 +68,43 @@ let gradcamProcess;
 
 function serviceEnabled(serviceName) {
   return RETINA_SERVICE === "all" || RETINA_SERVICE === serviceName;
+}
+
+function verifyGatewaySignature(req, res) {
+  if (!REQUIRE_AI_GATEWAY_SIGNATURE) return true;
+
+  if (!AI_GATEWAY_SHARED_SECRET) {
+    res.status(500).json({ error: "AI gateway shared secret is not configured" });
+    return false;
+  }
+
+  const timestamp = req.get("X-AFIO-Timestamp");
+  const signature = req.get("X-AFIO-Signature");
+  if (!timestamp || !signature) {
+    res.status(401).json({ error: "Missing AFIO gateway signature" });
+    return false;
+  }
+
+  const timestampMs = Number(timestamp);
+  if (!Number.isFinite(timestampMs) || Math.abs(Date.now() - timestampMs) > MAX_SIGNATURE_AGE_MS) {
+    res.status(403).json({ error: "Invalid or expired AFIO gateway signature" });
+    return false;
+  }
+
+  const payload = req.file.buffer.toString("base64");
+  const expectedSignature = crypto
+    .createHmac("sha256", AI_GATEWAY_SHARED_SECRET)
+    .update(`${timestamp}.${payload}`)
+    .digest("hex");
+
+  const expected = Buffer.from(expectedSignature, "hex");
+  const provided = Buffer.from(signature, "hex");
+  if (expected.length !== provided.length || !crypto.timingSafeEqual(expected, provided)) {
+    res.status(403).json({ error: "Invalid AFIO gateway signature" });
+    return false;
+  }
+
+  return true;
 }
 
 async function preprocessImageDR(buffer) {
@@ -361,10 +402,11 @@ app.post("/predict", upload.single("image"), async (req, res) => {
   if (!serviceEnabled("dr")) {
     return res.status(404).json({ error: "DR model is not enabled on this Retina service" });
   }
-  if (!checkSessionReady(res, "DR", session)) return;
   if (!req.file) {
     return res.status(400).json({ error: "No image file uploaded" });
   }
+  if (!verifyGatewaySignature(req, res)) return;
+  if (!checkSessionReady(res, "DR", session)) return;
 
   const validation = await validateFundusImage(req.file.buffer);
   if (!validation.valid) {
@@ -408,14 +450,40 @@ app.post("/predict", upload.single("image"), async (req, res) => {
   }
 });
 
+app.post("/gradcam", upload.single("image"), async (req, res) => {
+  if (!serviceEnabled("dr")) {
+    return res.status(404).json({ error: "DR Grad-CAM is not enabled on this Retina service" });
+  }
+  if (!req.file) {
+    return res.status(400).json({ error: "No image file uploaded" });
+  }
+  if (!verifyGatewaySignature(req, res)) return;
+  if (SKIP_GRADCAM || !gradcamProcess) {
+    return res.status(503).json({ error: "Retina DR Grad-CAM is disabled on this service" });
+  }
+
+  const validation = await validateFundusImage(req.file.buffer);
+  if (!validation.valid) {
+    return res.status(400).json({ error: validation.error });
+  }
+
+  const heatmap = await fetchGradCam(req.file.buffer, req.file.originalname);
+  if (!heatmap) {
+    return res.status(502).json({ error: "Retina DR Grad-CAM generation failed" });
+  }
+
+  return res.json({ heatmap });
+});
+
 app.post("/predict-glaucoma", upload.single("image"), async (req, res) => {
   if (!serviceEnabled("glaucoma")) {
     return res.status(404).json({ error: "Glaucoma model is not enabled on this Retina service" });
   }
-  if (!checkSessionReady(res, "Glaucoma", glaucomaSession)) return;
   if (!req.file) {
     return res.status(400).json({ error: "No image file uploaded" });
   }
+  if (!verifyGatewaySignature(req, res)) return;
+  if (!checkSessionReady(res, "Glaucoma", glaucomaSession)) return;
 
   const validation = await validateFundusImage(req.file.buffer);
   if (!validation.valid) {
@@ -459,10 +527,11 @@ app.post("/predict-hr", upload.single("image"), async (req, res) => {
   if (!serviceEnabled("hr")) {
     return res.status(404).json({ error: "Hypertensive-retinopathy model is not enabled on this service" });
   }
-  if (!checkSessionReady(res, "Hypertensive-retinopathy", hrSession)) return;
   if (!req.file) {
     return res.status(400).json({ error: "No image file uploaded" });
   }
+  if (!verifyGatewaySignature(req, res)) return;
+  if (!checkSessionReady(res, "Hypertensive-retinopathy", hrSession)) return;
 
   const validation = await validateFundusImage(req.file.buffer);
   if (!validation.valid) {

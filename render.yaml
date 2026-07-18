@@ -16,6 +16,8 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
+      - key: AI_GATEWAY_SHARED_SECRET
+        sync: false
   - type: web
     name: afio-oct-gradcam-backend
     runtime: python
@@ -32,6 +34,8 @@ services:
         value: "500"
       - key: TORCH_NUM_THREADS
         value: "1"
+      - key: AI_GATEWAY_SHARED_SECRET
+        sync: false
   - type: web
     name: afio-corneal-ai-backend
     runtime: python
@@ -54,6 +58,8 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
+      - key: AI_GATEWAY_SHARED_SECRET
+        sync: false
   - type: web
     name: afio-corneal-resnet-backend
     runtime: python
@@ -68,6 +74,8 @@ services:
         value: "1"
       - key: CORNEAL_MODELS
         value: resnet50
+      - key: AI_GATEWAY_SHARED_SECRET
+        sync: false
   - type: web
     name: afio-corneal-densenet-backend
     runtime: python
@@ -82,6 +90,8 @@ services:
         value: "1"
       - key: CORNEAL_MODELS
         value: densenet121
+      - key: AI_GATEWAY_SHARED_SECRET
+        sync: false
   - type: web
     name: afio-corneal-efficientnet-backend
     runtime: python
@@ -96,6 +106,8 @@ services:
         value: "1"
       - key: CORNEAL_MODELS
         value: efficientnetv2
+      - key: AI_GATEWAY_SHARED_SECRET
+        sync: false
   - type: web
     name: afio-corneal-ulcer-backend
     runtime: python
@@ -108,6 +120,8 @@ services:
         sync: false
       - key: CORNEAL_ULCER_MODEL_PATH
         value: best_model_corneal_ulcer_v6.h5
+      - key: AI_GATEWAY_SHARED_SECRET
+        sync: false
   - type: web
     name: afio-retina-ai-backend
     runtime: node
@@ -129,6 +143,8 @@ services:
         value: "1"
       - key: RETINA_SERVICE
         value: all
+      - key: AI_GATEWAY_SHARED_SECRET
+        sync: false
   - type: web
     name: afio-retina-dr-backend
     runtime: node
@@ -152,6 +168,8 @@ services:
         value: convnext
       - key: RETINA_DR_MODEL_PATH
         value: ../models/best_convnext_model.quant.onnx
+      - key: AI_GATEWAY_SHARED_SECRET
+        sync: false
   - type: web
     name: afio-retina-glaucoma-backend
     runtime: node
@@ -173,6 +191,8 @@ services:
         value: "1"
       - key: RETINA_SERVICE
         value: glaucoma
+      - key: AI_GATEWAY_SHARED_SECRET
+        sync: false
   - type: web
     name: afio-retina-hr-backend
     runtime: node
@@ -194,3 +214,5 @@ services:
         value: "1"
       - key: RETINA_SERVICE
         value: hr
+      - key: AI_GATEWAY_SHARED_SECRET
+        sync: false
