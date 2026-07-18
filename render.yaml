@@ -150,6 +150,9 @@ services:
     runtime: node
     rootDir: retina-ai-backend
     buildCommand: >-
+      python -m pip install gdown -r requirements-dr-convnext.txt &&
+      python -m gdown --folder https://drive.google.com/drive/folders/1VBxwdx-CoSBP906N3Zx_gEjRGfeQtglo --output ../models &&
+      python export_convnext_onnx.py &&
       npm install
     startCommand: node server.js
     healthCheckPath: /health

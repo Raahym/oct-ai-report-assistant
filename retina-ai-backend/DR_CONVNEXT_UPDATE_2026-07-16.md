@@ -64,3 +64,15 @@ Local checks completed:
 This update proves the new checkpoint is usable and newer than the old ONNX DR model, but it does not prove clinical superiority because the Drive folder did not include a validation report, confusion matrix, sensitivity/specificity, or test-set metrics.
 
 For a proper model-quality decision, compare the old DR ONNX and new ConvNeXt checkpoint on the same held-out fundus validation set.
+
+## Follow-up Check - 2026-07-18
+
+Arsal clarified that the Drive folder is the final Retina model package and that `smoke_test.onnx` is the DR ONNX file. The folder still contains the same seven model files listed above, including `best_convnext_model.pth`.
+
+The Render DR service remains configured for the optimized ConvNeXt ONNX path:
+
+`RETINA_DR_MODEL_KIND=convnext`
+
+`RETINA_DR_MODEL_PATH=../models/best_convnext_model.quant.onnx`
+
+To avoid relying on ignored local files, the DR Render build now downloads the Drive folder and runs `export_convnext_onnx.py` during build. This generates `best_convnext_model.quant.onnx` from `best_convnext_model.pth` before `node server.js` starts.
