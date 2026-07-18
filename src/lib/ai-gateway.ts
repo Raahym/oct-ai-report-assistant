@@ -191,6 +191,7 @@ export async function forwardSignedUpload(input: {
   fieldName?: string;
   sharedSecret: string;
   extraHeaders?: Record<string, string>;
+  incrementUsage?: boolean;
   audit?: {
     supabaseUrl: string;
     serviceRoleKey: string;
@@ -228,8 +229,8 @@ export async function forwardSignedUpload(input: {
     fileSizeBytes: input.file.size,
     contentType: input.file.type
   });
-  if (response.ok) {
-    await incrementEntitlementUsage(input.audit);
+  if (response.ok && input.incrementUsage !== false) {
+    await incrementGatewayEntitlementUsage(input.audit);
   }
 
   const responseHeaders = new Headers();
@@ -246,7 +247,7 @@ export async function forwardSignedUpload(input: {
   });
 }
 
-async function incrementEntitlementUsage(
+export async function incrementGatewayEntitlementUsage(
   audit:
     | {
         supabaseUrl: string;

@@ -3,6 +3,7 @@ import { normalizeVkgEnsemblePrediction } from "@/lib/ai-api";
 import {
   configuredGatewayUrls,
   forwardSignedUpload,
+  incrementGatewayEntitlementUsage,
   jsonError,
   requiredGatewayBaseEnv,
   requireGatewayModuleAccess,
@@ -55,6 +56,7 @@ export async function POST(request: NextRequest) {
           file: uploaded,
           fieldName: "file",
           sharedSecret: env.sharedSecret,
+          incrementUsage: false,
           audit: {
             supabaseUrl: env.supabaseUrl,
             serviceRoleKey: env.serviceRoleKey,
@@ -81,6 +83,15 @@ export async function POST(request: NextRequest) {
         return response.json();
       })
     );
+
+    await incrementGatewayEntitlementUsage({
+      supabaseUrl: env.supabaseUrl,
+      serviceRoleKey: env.serviceRoleKey,
+      moduleId: "corneal",
+      userId: accessResult.userId,
+      clinicId: accessResult.clinicId,
+      route: "/api/ai/corneal"
+    });
 
     return NextResponse.json(normalizeVkgEnsemblePrediction(predictions));
   } catch (error) {
