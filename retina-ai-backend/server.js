@@ -18,10 +18,15 @@ const ENABLE_PUBLIC_DEMO = process.env.ENABLE_PUBLIC_DEMO === "true";
 const MAX_SIGNATURE_AGE_MS = Number(process.env.AI_GATEWAY_SIGNATURE_MAX_AGE_MS || 5 * 60 * 1000);
 const seenGatewayRequestIds = new Map();
 const RETINA_SERVICE = (process.env.RETINA_SERVICE || "all").toLowerCase();
+const DEFAULT_DR_MODEL_PATH = path.join(__dirname, "..", "models", "smoke_test.onnx");
+const RAW_DR_MODEL_KIND = (process.env.RETINA_DR_MODEL_KIND || "legacy").toLowerCase();
+const ALLOW_RETIRED_DR_CONVNEXT = process.env.ALLOW_RETIRED_DR_CONVNEXT === "true";
+const DR_MODEL_KIND =
+  RAW_DR_MODEL_KIND === "convnext" && ALLOW_RETIRED_DR_CONVNEXT ? "convnext" : "legacy";
 const MODEL_PATH =
-  process.env.RETINA_DR_MODEL_PATH ||
-  path.join(__dirname, "..", "models", "smoke_test.onnx");
-const DR_MODEL_KIND = (process.env.RETINA_DR_MODEL_KIND || "legacy").toLowerCase();
+  DR_MODEL_KIND === "convnext"
+    ? process.env.RETINA_DR_MODEL_PATH || path.join(__dirname, "..", "models", "best_convnext_model.quant.onnx")
+    : DEFAULT_DR_MODEL_PATH;
 const DR_INPUT_SIZE = Number(process.env.RETINA_DR_INPUT_SIZE || 224);
 const GLAUCOMA_MODEL_PATH =
   process.env.RETINA_GLAUCOMA_MODEL_PATH ||
