@@ -83,6 +83,10 @@ export async function requireGatewayModuleAccess(
   const admin = createClient(env.supabaseUrl, env.serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false }
   });
+
+  const entitlementResult = await verifyCommercialEntitlement(admin, clinicId, moduleId);
+  if (entitlementResult) return entitlementResult;
+
   const { data, error } = await admin
     .from("clinic_modules")
     .select("module_id,is_enabled")
@@ -98,6 +102,50 @@ export async function requireGatewayModuleAccess(
     clinicId,
     role: typeof authResult.profile.role === "string" ? authResult.profile.role : null
   };
+}
+
+async function verifyCommercialEntitlement(
+  admin: ReturnType<typeof createClient<any>>,
+  clinicId: string,
+  moduleId: string
+): Promise<NextResponse | null | undefined> {
+  const { data, error } = (await admin
+    .from("clinic_module_entitlements")
+    .select("status,expires_at,monthly_scan_quota,monthly_scan_count")
+    .eq("clinic_id", clinicId)
+    .eq("module_id", moduleId)
+    .maybeSingle()) as {
+    data: {
+      status?: string | null;
+      expires_at?: string | null;
+      monthly_scan_quota?: number | null;
+      monthly_scan_count?: number | null;
+    } | null;
+    error: { message?: string } | null;
+  };
+
+  if (error) {
+    const message = typeof error.message === "string" ? error.message.toLowerCase() : "";
+    if (message.includes("does not exist") || message.includes("schema cache")) return undefined;
+    return jsonError(`Could not verify ${moduleId} commercial entitlement.`, 500);
+  }
+  if (!data) return undefined;
+
+  if (!["active", "trial"].includes(String(data.status))) {
+    return jsonError("This module is not active for your hospital.", 403);
+  }
+
+  if (data.expires_at && new Date(String(data.expires_at)).getTime() < Date.now()) {
+    return jsonError("This module subscription has expired.", 403);
+  }
+
+  const quota = Number(data.monthly_scan_quota);
+  const used = Number(data.monthly_scan_count ?? 0);
+  if (Number.isFinite(quota) && quota >= 0 && used >= quota) {
+    return jsonError("This module monthly scan quota has been reached.", 429);
+  }
+
+  return null;
 }
 
 function hasAllowedImageSignature(bytes: Uint8Array, contentType: string) {
@@ -150,7 +198,8 @@ export async function forwardSignedUpload(input: {
   const payload = Buffer.from(await input.file.arrayBuffer()).toString("base64");
   const signedHeaders = buildSignedRequestHeaders(payload, input.sharedSecret, {
     signatureHeader: "X-AFIO-Signature",
-    timestampHeader: "X-AFIO-Timestamp"
+    timestampHeader: "X-AFIO-Timestamp",
+    requestId
   });
 
   const forward = new FormData();
@@ -160,7 +209,6 @@ export async function forwardSignedUpload(input: {
     method: "POST",
     headers: {
       ...signedHeaders,
-      "X-AFIO-Request-Id": requestId,
       ...(input.extraHeaders ?? {})
     },
     body: forward

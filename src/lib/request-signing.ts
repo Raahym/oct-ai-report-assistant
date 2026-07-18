@@ -8,14 +8,16 @@ export type SignedRequestHeaders = {
 export type SignedRequestHeaderOptions = {
   signatureHeader?: string;
   timestampHeader?: string;
+  requestId?: string;
 };
 
 export function currentTimestamp(): string {
   return Date.now().toString();
 }
 
-export function createRequestSignature(payload: string, timestamp: string, sharedSecret: string): string {
-  return createHmac("sha256", sharedSecret).update(`${timestamp}.${payload}`).digest("hex");
+export function createRequestSignature(payload: string, timestamp: string, sharedSecret: string, requestId?: string): string {
+  const signedPayload = requestId ? `${timestamp}.${requestId}.${payload}` : `${timestamp}.${payload}`;
+  return createHmac("sha256", sharedSecret).update(signedPayload).digest("hex");
 }
 
 export function createSignedRequestHeaders(
@@ -25,7 +27,7 @@ export function createSignedRequestHeaders(
 ): SignedRequestHeaders {
   const timestamp = currentTimestamp();
   return {
-    signatureHeader: createRequestSignature(payload, timestamp, sharedSecret),
+    signatureHeader: createRequestSignature(payload, timestamp, sharedSecret, options.requestId),
     timestampHeader: timestamp
   };
 }
@@ -36,12 +38,13 @@ export function buildSignedRequestHeaders(
   options: SignedRequestHeaderOptions = {}
 ) {
   const timestamp = currentTimestamp();
-  const signature = createRequestSignature(payload, timestamp, sharedSecret);
+  const signature = createRequestSignature(payload, timestamp, sharedSecret, options.requestId);
   const signatureHeader = options.signatureHeader ?? "x-request-signature";
   const timestampHeader = options.timestampHeader ?? "x-request-timestamp";
 
   return {
     [signatureHeader]: signature,
-    [timestampHeader]: timestamp
+    [timestampHeader]: timestamp,
+    ...(options.requestId ? { "X-AFIO-Request-Id": options.requestId } : {})
   } as Record<string, string>;
 }
