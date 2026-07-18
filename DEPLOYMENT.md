@@ -15,14 +15,17 @@ Deploy the FastAPI PyTorch backend somewhere that supports long-running Python s
 ```text
 NEXT_PUBLIC_SUPABASE_URL=https://vxivcawwlxcrnkofbywg.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your Supabase anon public key
-NEXT_PUBLIC_AI_BACKEND_URL=https://your deployed FastAPI backend URL
-NEXT_PUBLIC_CORNEAL_BACKEND_URL=https://your deployed corneal FastAPI backend URL
-NEXT_PUBLIC_RETINA_BACKEND_URL=https://your deployed retina backend URL
-NEXT_PUBLIC_RETINA_DR_BACKEND_URL=https://afio-retina-dr-backend.onrender.com
-NEXT_PUBLIC_RETINA_GLAUCOMA_BACKEND_URL=https://afio-retina-glaucoma-backend.onrender.com
-NEXT_PUBLIC_RETINA_HR_BACKEND_URL=https://afio-retina-hr-backend.onrender.com
 NEXT_PUBLIC_APP_URL=https://cvclinics.online
 SUPABASE_SERVICE_ROLE_KEY=your Supabase service role key
+AI_GATEWAY_SHARED_SECRET=one strong shared secret also configured on Render AI services
+OCT_AI_BACKEND_URL=server-only OCT backend URL
+VKG_BACKEND_URL=server-only corneal/VKG backend URL
+CORNEAL_BACKEND_URL=server-only corneal/VKG backend URL
+CORNEAL_ULCER_BACKEND_URL=server-only corneal ulcer backend URL
+RETINA_DR_BACKEND_URL=server-only Retina DR backend URL
+RETINA_DR_GRADCAM_BACKEND_URL=server-only Retina Grad-CAM backend URL
+RETINA_GLAUCOMA_BACKEND_URL=server-only Retina glaucoma backend URL
+RETINA_HR_BACKEND_URL=server-only Retina HR backend URL
 RESEND_API_KEY=your Resend API key
 EMAIL_FROM=AFIO Platform <reports@cvclinics.online>
 ```
@@ -101,4 +104,4 @@ SMTP_FROM_NAME=OCT AI Report Assistant
 
 The service role key must stay on the backend only. Do not add it to Vercel `NEXT_PUBLIC_*` variables.
 
-After the backend is deployed, set `NEXT_PUBLIC_AI_BACKEND_URL` in Vercel to that deployed backend URL.
+After backend deployment, set AI backend URLs only as server-side Vercel env vars. Do not use `NEXT_PUBLIC_*_BACKEND_URL`; browser traffic must go through `/api/ai/*` gateway routes.

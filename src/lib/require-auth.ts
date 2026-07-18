@@ -6,7 +6,7 @@ type AuthEnv = {
   serviceRoleKey: string;
 };
 
-export type AuthenticatedProfile = Record<string, unknown> & { id: string };
+export type AuthenticatedProfile = Record<string, unknown> & { id: string; is_active?: boolean | null };
 
 export type RequireAuthResult =
   | {
@@ -37,11 +37,11 @@ export async function requireAuth(request: NextRequest): Promise<RequireAuthResu
   if (!env) return jsonError("Authentication is not configured.", 500);
 
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  if (!token) return jsonError("Missing admin session.", 401);
+  if (!token) return jsonError("Missing authenticated session.", 401);
 
   const admin = createAdminClient(env);
   const { data: authData, error: authError } = await admin.auth.getUser(token);
-  if (authError || !authData.user) return jsonError("Invalid admin session.", 401);
+  if (authError || !authData.user) return jsonError("Invalid authenticated session.", 401);
 
   const { data: profile, error: profileError } = await admin
     .from("profiles")
@@ -49,8 +49,9 @@ export async function requireAuth(request: NextRequest): Promise<RequireAuthResu
     .eq("id", authData.user.id)
     .maybeSingle();
 
-  if (profileError) return jsonError("Could not verify admin access.", 500);
+  if (profileError) return jsonError("Could not verify account access.", 500);
   if (!profile) return jsonError("Profile not found.", 404);
+  if (profile.is_active === false) return jsonError("This account is inactive.", 403);
 
   return {
     user: authData.user,

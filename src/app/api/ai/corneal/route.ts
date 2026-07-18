@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     return jsonError("No image file uploaded.", 400);
   }
 
-  const validationError = validateGatewayUpload(uploaded);
+  const validationError = await validateGatewayUpload(uploaded);
   if (validationError) return validationError;
 
   const backendUrls = configuredGatewayUrls(CORNEAL_BACKEND_ENV_NAMES);

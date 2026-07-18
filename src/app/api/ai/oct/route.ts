@@ -3,11 +3,11 @@ import { createClient } from "@supabase/supabase-js";
 import { requireAuth } from "@/lib/require-auth";
 import { createInMemoryRateLimiter, rateLimitKey } from "@/lib/rate-limit";
 import { buildSignedRequestHeaders } from "@/lib/request-signing";
+import { validateGatewayUpload } from "@/lib/ai-gateway";
 
 export const runtime = "nodejs";
 
 const limiter = createInMemoryRateLimiter(10 * 60 * 1000, 20);
-const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -81,15 +81,8 @@ export async function POST(request: NextRequest) {
   if (!(uploaded instanceof File)) {
     return jsonError("No image file uploaded.", 400);
   }
-  if (![
-    "image/jpeg",
-    "image/png"
-  ].includes(uploaded.type)) {
-    return jsonError("Only JPG, JPEG, and PNG OCT images are supported.", 400);
-  }
-  if (uploaded.size <= 0 || uploaded.size > MAX_UPLOAD_SIZE_BYTES) {
-    return jsonError("Uploaded image is too large.", 413);
-  }
+  const validationError = await validateGatewayUpload(uploaded);
+  if (validationError) return validationError;
 
   const isGradcam = requestIsGradcam(request, incoming);
 
@@ -113,9 +106,14 @@ export async function POST(request: NextRequest) {
     return jsonError("Could not reach OCT backend.", 502);
   }
 
+  const headers = new Headers();
+  const contentType = response.headers.get("content-type");
+  if (contentType) headers.set("content-type", contentType);
+  headers.set("Cache-Control", "no-store, max-age=0");
+
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
-    headers: response.headers
+    headers
   });
 }

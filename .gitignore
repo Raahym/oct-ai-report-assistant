@@ -17,3 +17,4 @@ retina-ai-backend/__pycache__/
 
 .vercel
 .env*
+AFIO_PRIVATE_SECURITY_NOTES/

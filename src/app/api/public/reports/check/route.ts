@@ -52,8 +52,8 @@ export async function POST(request: NextRequest) {
   if (!env) return jsonError("Report access is not configured.", 500);
 
   const body = await request.json().catch(() => ({}));
-  const accessId = String(body.access_id ?? "").trim();
-  const password = String(body.password ?? "");
+  const accessId = String(body.access_id ?? "").trim().slice(0, 80);
+  const password = String(body.password ?? "").slice(0, 120);
   if (!accessId || !password) return jsonError("Access ID and password are required.");
 
   if (isRateLimited(rateLimitKey(request, accessId))) {

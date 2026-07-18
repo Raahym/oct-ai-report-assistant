@@ -93,4 +93,4 @@ Avoid hard lockouts where possible; prefer temporary cooldowns and clear recover
 
 ## Deployment Notes
 
-- 2026-07-17: Corneal Ulcer Detection backend is configured as a separate Render free-tier Python service. Frontend wiring uses `NEXT_PUBLIC_CORNEAL_ULCER_BACKEND_URL` in Vercel project settings.
+- 2026-07-17: Corneal Ulcer Detection backend is configured as a separate Render free-tier Python service. Frontend wiring must use the authenticated `/api/ai/corneal-ulcer` gateway route; the backend URL belongs in a server-only `CORNEAL_ULCER_BACKEND_URL` Vercel variable.

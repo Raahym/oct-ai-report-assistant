@@ -6,12 +6,6 @@ import { supabase } from "./supabase";
 const FEEDBACK_KEY = "oct-ai-report-assistant-feedback-v1";
 let cachedFeedbackEntries: FeedbackEntry[] | null = null;
 
-function backendBaseUrl() {
-  const url = process.env.NEXT_PUBLIC_AI_BACKEND_URL;
-  if (!url) throw new Error("AI backend URL is not configured.");
-  return url.replace(/\/$/, "");
-}
-
 async function readError(response: Response, fallback: string) {
   try {
     const body = await response.json();
@@ -91,16 +85,8 @@ export async function getFeedbackEntries() {
     return cachedFeedbackEntries;
   }
 
-  try {
-    const response = await fetch(`${backendBaseUrl()}/feedback`, { cache: "no-store" });
-    if (!response.ok) throw new Error(await readError(response, "Could not load feedback."));
-    const body = await response.json();
-    cachedFeedbackEntries = (body.entries ?? []) as FeedbackEntry[];
-    return cachedFeedbackEntries;
-  } catch {
-    cachedFeedbackEntries = cachedFeedbackEntries ?? readEntries();
-    return cachedFeedbackEntries;
-  }
+  cachedFeedbackEntries = cachedFeedbackEntries ?? readEntries();
+  return cachedFeedbackEntries;
 }
 
 export function getCachedFeedbackEntries() {
@@ -145,13 +131,7 @@ export async function updateFeedbackStatus(id: string, status: FeedbackEntry["st
     return getFeedbackEntries();
   }
 
-  const response = await fetch(`${backendBaseUrl()}/feedback/${id}/status`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status })
-  });
-  if (!response.ok) throw new Error(await readError(response, "Could not update feedback status."));
-  return getFeedbackEntries();
+  throw new Error("Feedback admin updates require Supabase configuration.");
 }
 
 export async function addFeedbackResponse(id: string, input: Omit<FeedbackResponse, "id" | "createdAt">) {
@@ -165,14 +145,5 @@ export async function addFeedbackResponse(id: string, input: Omit<FeedbackRespon
     return getFeedbackEntries();
   }
 
-  const response = await fetch(`${backendBaseUrl()}/feedback/${id}/responses`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      responder_name: input.responderName,
-      message: input.message
-    })
-  });
-  if (!response.ok) throw new Error(await readError(response, "Could not save feedback response."));
-  return getFeedbackEntries();
+  throw new Error("Feedback responses require Supabase configuration.");
 }

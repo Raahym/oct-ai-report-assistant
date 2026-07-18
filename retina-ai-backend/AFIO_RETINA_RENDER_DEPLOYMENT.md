@@ -68,12 +68,14 @@ This keeps the core screening APIs deployable without installing the heavier Pyt
 
 ## Frontend Hook
 
-After Render creates the services, set these Vercel environment variables:
+After Render creates the services, set these Vercel environment variables as server-only values:
 
 ```text
-NEXT_PUBLIC_RETINA_DR_BACKEND_URL=https://afio-retina-dr-backend.onrender.com
-NEXT_PUBLIC_RETINA_GLAUCOMA_BACKEND_URL=https://afio-retina-glaucoma-backend.onrender.com
-NEXT_PUBLIC_RETINA_HR_BACKEND_URL=https://afio-retina-hr-backend.onrender.com
+RETINA_DR_BACKEND_URL=<private/server-only DR backend URL>
+RETINA_DR_GRADCAM_BACKEND_URL=<private/server-only DR Grad-CAM backend URL>
+RETINA_GLAUCOMA_BACKEND_URL=<private/server-only glaucoma backend URL>
+RETINA_HR_BACKEND_URL=<private/server-only HR backend URL>
+AI_GATEWAY_SHARED_SECRET=<same strong secret configured on Render Retina services>
 ```
 
-`NEXT_PUBLIC_RETINA_BACKEND_URL` can remain set to the old combined service as a fallback during migration. The frontend prefers the split URLs when present, runs all enabled Retina tests from one upload, and stores one combined Retina report draft.
+Do not expose Retina service URLs as `NEXT_PUBLIC_*`. The browser calls AFIO `/api/ai/retina/*` gateway routes, and the gateway signs backend requests with HMAC.

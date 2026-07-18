@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createInMemoryRateLimiter, rateLimitKey } from "@/lib/rate-limit";
 
 type ModuleId = "oct" | "vkg" | "corneal" | "corneal_ulcer" | "retina";
 type FeedbackType = "feedback" | "complaint";
+const limiter = createInMemoryRateLimiter(10 * 60 * 1000, 12);
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ message }, { status });
@@ -19,6 +21,10 @@ function isEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(value.trim());
 }
 
+function cleanString(value: unknown, maxLength: number) {
+  return String(value ?? "").trim().slice(0, maxLength);
+}
+
 export async function POST(request: NextRequest) {
   const env = requiredEnv();
   if (!env) return jsonError("Feedback is not configured.", 500);
@@ -26,18 +32,20 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const type = (body.type === "complaint" ? "complaint" : "feedback") as FeedbackType;
   const moduleId = ["oct", "vkg", "corneal", "corneal_ulcer", "retina"].includes(body.module_id) ? body.module_id as ModuleId : null;
-  const clinicId = String(body.clinic_id ?? "").trim() || null;
-  const hospitalName = String(body.hospital_name ?? "").trim() || null;
-  const name = String(body.name ?? "").trim();
-  const email = String(body.email ?? "").trim().toLowerCase() || null;
-  const phone = String(body.phone ?? "").trim() || null;
-  const patientCode = String(body.patient_code ?? "").trim() || null;
-  const reportId = String(body.report_id ?? "").trim() || null;
-  const message = String(body.message ?? "").trim();
+  const clinicId = cleanString(body.clinic_id, 80) || null;
+  const hospitalName = cleanString(body.hospital_name, 160) || null;
+  const name = cleanString(body.name, 120);
+  const email = cleanString(body.email, 254).toLowerCase() || null;
+  const phone = cleanString(body.phone, 40) || null;
+  const patientCode = cleanString(body.patient_code, 80) || null;
+  const reportId = cleanString(body.report_id, 80) || null;
+  const message = cleanString(body.message, 4000);
 
   if (!name || !message) return jsonError("Name and message are required.");
   if (email && !isEmail(email)) return jsonError("Enter a valid email address.");
-  if (message.length > 4000) return jsonError("Message is too long.");
+  if (limiter.isRateLimited(rateLimitKey(request, email || phone || name))) {
+    return jsonError("Too many feedback attempts. Please wait before trying again.", 429);
+  }
 
   const admin = createClient(env.supabaseUrl, env.serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false }

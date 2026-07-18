@@ -38,9 +38,9 @@ export async function POST(request: NextRequest) {
   if (!env) return jsonError("Report access is not configured.", 500);
 
   const body = await request.json().catch(() => ({}));
-  const accessId = String(body.access_id ?? "").trim();
-  const oldPassword = String(body.old_password ?? "");
-  const newPassword = String(body.new_password ?? "");
+  const accessId = String(body.access_id ?? "").trim().slice(0, 80);
+  const oldPassword = String(body.old_password ?? "").slice(0, 120);
+  const newPassword = String(body.new_password ?? "").slice(0, 120);
   if (!accessId || !oldPassword || !newPassword) return jsonError("Access ID, old password, and new password are required.");
   if (newPassword.length < 8) return jsonError("New password must be at least 8 characters.");
   if (isRateLimited(rateLimitKey(request, accessId))) return jsonError("Too many attempts. Please wait before trying again.", 429);

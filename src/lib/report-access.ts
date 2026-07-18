@@ -67,12 +67,6 @@ export type PublicReportResult = {
   reports?: PublicReport[];
 };
 
-function backendBaseUrl() {
-  const backendUrl = process.env.NEXT_PUBLIC_AI_BACKEND_URL;
-  if (!backendUrl) throw new Error("NEXT_PUBLIC_AI_BACKEND_URL is missing.");
-  return backendUrl.replace(/\/$/, "");
-}
-
 export async function checkPublicReport(reportId: string, password: string): Promise<PublicReportResult> {
   const response = await fetch("/api/public/reports/check", {
     method: "POST",
@@ -101,7 +95,7 @@ export async function sendReportAccessEmail(input: {
   password: string;
   mode: "patient-created" | "report-registered" | "report-ready";
 }) {
-  const response = await fetch(`${backendBaseUrl()}/reports/send-access-email`, {
+  const response = await fetch("/api/public/reports/send-access-email", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -163,7 +157,7 @@ export async function sendFeedbackEmail(input: {
   mode: "registered" | "response";
   body?: string;
 }) {
-  const response = await fetch(`${backendBaseUrl()}/feedback/send-email`, {
+  const response = await fetch("/api/public/feedback/send-email", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

@@ -8,6 +8,7 @@
     "start": "next start --hostname 127.0.0.1",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "security:scan": "powershell -ExecutionPolicy Bypass -File scripts/security-scan.ps1",
     "snapshot:afio": "powershell -ExecutionPolicy Bypass -File scripts/save-afio-snapshot.ps1"
   },
   "dependencies": {

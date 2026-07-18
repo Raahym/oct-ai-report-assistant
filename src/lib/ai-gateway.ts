@@ -24,6 +24,7 @@ export type GatewayAuthResult =
 
 export const MAX_GATEWAY_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
 export const GATEWAY_ALLOWED_CONTENT_TYPES = new Set(["image/jpeg", "image/png"]);
+const MAX_SAFE_RESPONSE_HEADERS = new Set(["content-type"]);
 
 export function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
@@ -89,12 +90,31 @@ export async function requireGatewayModuleAccess(
   return { userId: authResult.user.id };
 }
 
-export function validateGatewayUpload(file: File) {
+function hasAllowedImageSignature(bytes: Uint8Array, contentType: string) {
+  const isPng =
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a;
+  const isJpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  return (contentType === "image/png" && isPng) || (contentType === "image/jpeg" && isJpeg);
+}
+
+export async function validateGatewayUpload(file: File) {
   if (!GATEWAY_ALLOWED_CONTENT_TYPES.has(file.type)) {
     return jsonError("Only JPG, JPEG, and PNG images are supported.", 400);
   }
   if (file.size <= 0 || file.size > MAX_GATEWAY_UPLOAD_SIZE_BYTES) {
     return jsonError("Uploaded image is too large.", 413);
+  }
+  const signature = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  if (!hasAllowedImageSignature(signature, file.type)) {
+    return jsonError("Uploaded file content does not match a supported image type.", 400);
   }
   return null;
 }
@@ -108,7 +128,7 @@ export async function forwardSignedUpload(input: {
   extraHeaders?: Record<string, string>;
 }) {
   const payload = Buffer.from(await input.file.arrayBuffer()).toString("base64");
-  const headers = buildSignedRequestHeaders(payload, input.sharedSecret, {
+  const signedHeaders = buildSignedRequestHeaders(payload, input.sharedSecret, {
     signatureHeader: "X-AFIO-Signature",
     timestampHeader: "X-AFIO-Timestamp"
   });
@@ -119,15 +139,21 @@ export async function forwardSignedUpload(input: {
   const response = await fetch(`${input.backendUrl}${input.backendPath}`, {
     method: "POST",
     headers: {
-      ...headers,
+      ...signedHeaders,
       ...(input.extraHeaders ?? {})
     },
     body: forward
   });
 
+  const responseHeaders = new Headers();
+  response.headers.forEach((value, key) => {
+    if (MAX_SAFE_RESPONSE_HEADERS.has(key.toLowerCase())) responseHeaders.set(key, value);
+  });
+  responseHeaders.set("Cache-Control", "no-store, max-age=0");
+
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
-    headers: response.headers
+    headers: responseHeaders
   });
 }
