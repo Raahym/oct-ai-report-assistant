@@ -139,9 +139,9 @@ async function verifyCommercialEntitlement(
     return jsonError("This module subscription has expired.", 403);
   }
 
-  const quota = Number(data.monthly_scan_quota);
+  const quota = data.monthly_scan_quota == null ? null : Number(data.monthly_scan_quota);
   const used = Number(data.monthly_scan_count ?? 0);
-  if (Number.isFinite(quota) && quota >= 0 && used >= quota) {
+  if (quota !== null && Number.isFinite(quota) && quota >= 0 && used >= quota) {
     return jsonError("This module monthly scan quota has been reached.", 429);
   }
 
