@@ -257,10 +257,29 @@ async function incrementEntitlementUsage(
     const admin = createClient(audit.supabaseUrl, audit.serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false }
     });
-    await admin.rpc("increment_clinic_module_scan_usage", {
+    const { error } = await admin.rpc("increment_clinic_module_scan_usage", {
       target_clinic_id: audit.clinicId,
       target_module_id: audit.moduleId
     });
+    if (!error) return;
+
+    const message = typeof error.message === "string" ? error.message.toLowerCase() : "";
+    if (!message.includes("could not find the function") && !message.includes("schema cache")) return;
+
+    const { data } = await admin
+      .from("clinic_module_entitlements")
+      .select("monthly_scan_count")
+      .eq("clinic_id", audit.clinicId)
+      .eq("module_id", audit.moduleId)
+      .maybeSingle();
+    if (!data) return;
+
+    const currentCount = Number(data.monthly_scan_count ?? 0);
+    await admin
+      .from("clinic_module_entitlements")
+      .update({ monthly_scan_count: currentCount + 1 })
+      .eq("clinic_id", audit.clinicId)
+      .eq("module_id", audit.moduleId);
   } catch {
     // Quota accounting should be monitored, but it must not turn a successful model response into a failed clinical request.
   }
