@@ -34,7 +34,15 @@ export async function POST(request: NextRequest) {
       backendPath: "/predict-hr",
       file: uploaded,
       fieldName: "image",
-      sharedSecret: env.sharedSecret
+      sharedSecret: env.sharedSecret,
+      audit: {
+        supabaseUrl: env.supabaseUrl,
+        serviceRoleKey: env.serviceRoleKey,
+        moduleId: "retina",
+        userId: accessResult.userId,
+        clinicId: accessResult.clinicId,
+        route: "/api/ai/retina/hr"
+      }
     });
   } catch {
     return jsonError("Could not reach Retina hypertensive-retinopathy backend.", 502);

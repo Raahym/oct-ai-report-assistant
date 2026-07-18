@@ -19,6 +19,8 @@ export type GatewayBaseEnv = {
 export type GatewayAuthResult =
   | {
       userId: string;
+      clinicId: string | null;
+      role: string | null;
     }
   | NextResponse;
 
@@ -66,7 +68,11 @@ export async function requireGatewayModuleAccess(
   if (authResult instanceof Response) return authResult;
 
   if (authResult.profile.role === "afio_admin") {
-    return { userId: authResult.user.id };
+    return {
+      userId: authResult.user.id,
+      clinicId: typeof authResult.profile.clinic_id === "string" ? authResult.profile.clinic_id : null,
+      role: typeof authResult.profile.role === "string" ? authResult.profile.role : null
+    };
   }
 
   const clinicId = String(authResult.profile.clinic_id ?? "");
@@ -87,7 +93,11 @@ export async function requireGatewayModuleAccess(
   if (error) return jsonError(`Could not verify ${moduleId} module access.`, 500);
   if (!data || data.is_enabled === false) return jsonError("You are not authorized to use this module.", 403);
 
-  return { userId: authResult.user.id };
+  return {
+    userId: authResult.user.id,
+    clinicId,
+    role: typeof authResult.profile.role === "string" ? authResult.profile.role : null
+  };
 }
 
 function hasAllowedImageSignature(bytes: Uint8Array, contentType: string) {
@@ -126,7 +136,17 @@ export async function forwardSignedUpload(input: {
   fieldName?: string;
   sharedSecret: string;
   extraHeaders?: Record<string, string>;
+  audit?: {
+    supabaseUrl: string;
+    serviceRoleKey: string;
+    moduleId: string;
+    userId: string;
+    clinicId: string | null;
+    route: string;
+  };
 }) {
+  const requestId = crypto.randomUUID();
+  const startedAt = Date.now();
   const payload = Buffer.from(await input.file.arrayBuffer()).toString("base64");
   const signedHeaders = buildSignedRequestHeaders(payload, input.sharedSecret, {
     signatureHeader: "X-AFIO-Signature",
@@ -140,9 +160,18 @@ export async function forwardSignedUpload(input: {
     method: "POST",
     headers: {
       ...signedHeaders,
+      "X-AFIO-Request-Id": requestId,
       ...(input.extraHeaders ?? {})
     },
     body: forward
+  });
+  await recordGatewayRequest(input.audit, {
+    requestId,
+    backendPath: input.backendPath,
+    statusCode: response.status,
+    durationMs: Date.now() - startedAt,
+    fileSizeBytes: input.file.size,
+    contentType: input.file.type
   });
 
   const responseHeaders = new Headers();
@@ -150,10 +179,54 @@ export async function forwardSignedUpload(input: {
     if (MAX_SAFE_RESPONSE_HEADERS.has(key.toLowerCase())) responseHeaders.set(key, value);
   });
   responseHeaders.set("Cache-Control", "no-store, max-age=0");
+  responseHeaders.set("X-AFIO-Request-Id", requestId);
 
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
     headers: responseHeaders
   });
+}
+
+async function recordGatewayRequest(
+  audit:
+    | {
+        supabaseUrl: string;
+        serviceRoleKey: string;
+        moduleId: string;
+        userId: string;
+        clinicId: string | null;
+        route: string;
+      }
+    | undefined,
+  event: {
+    requestId: string;
+    backendPath: string;
+    statusCode: number;
+    durationMs: number;
+    fileSizeBytes: number;
+    contentType: string;
+  }
+) {
+  if (!audit) return;
+
+  try {
+    const admin = createClient(audit.supabaseUrl, audit.serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+    await admin.from("ai_gateway_requests").insert({
+      request_id: event.requestId,
+      clinic_id: audit.clinicId,
+      user_id: audit.userId,
+      module_id: audit.moduleId,
+      route: audit.route,
+      backend_path: event.backendPath,
+      status_code: event.statusCode,
+      duration_ms: event.durationMs,
+      file_size_bytes: event.fileSizeBytes,
+      content_type: event.contentType
+    });
+  } catch {
+    // Gateway audit must never break clinical inference. Missing migrations are caught during deployment checks.
+  }
 }

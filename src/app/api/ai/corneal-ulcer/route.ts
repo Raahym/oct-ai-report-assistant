@@ -34,7 +34,15 @@ export async function POST(request: NextRequest) {
       backendPath: "/predict",
       file: uploaded,
       fieldName: "file",
-      sharedSecret: env.sharedSecret
+      sharedSecret: env.sharedSecret,
+      audit: {
+        supabaseUrl: env.supabaseUrl,
+        serviceRoleKey: env.serviceRoleKey,
+        moduleId: "corneal_ulcer",
+        userId: accessResult.userId,
+        clinicId: accessResult.clinicId,
+        route: "/api/ai/corneal-ulcer"
+      }
     });
   } catch {
     return jsonError("Could not reach Corneal Ulcer backend.", 502);

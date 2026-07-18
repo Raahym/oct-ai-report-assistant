@@ -45,7 +45,15 @@ export async function POST(request: NextRequest) {
       backendPath: "/predict-glaucoma",
       file: uploaded,
       fieldName: "image",
-      sharedSecret: baseEnv.sharedSecret
+      sharedSecret: baseEnv.sharedSecret,
+      audit: {
+        supabaseUrl: baseEnv.supabaseUrl,
+        serviceRoleKey: baseEnv.serviceRoleKey,
+        moduleId: "retina",
+        userId: accessResult.userId,
+        clinicId: accessResult.clinicId,
+        route: "/api/ai/retina/glaucoma"
+      }
     });
   } catch {
     return jsonError("Could not reach Retina glaucoma backend.", 502);

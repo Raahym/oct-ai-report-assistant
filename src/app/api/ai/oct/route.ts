@@ -1,26 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import { requireAuth } from "@/lib/require-auth";
+import { NextRequest } from "next/server";
 import { createInMemoryRateLimiter, rateLimitKey } from "@/lib/rate-limit";
-import { buildSignedRequestHeaders } from "@/lib/request-signing";
-import { validateGatewayUpload } from "@/lib/ai-gateway";
+import { forwardSignedUpload, jsonError, requiredGatewayEnv, requireGatewayModuleAccess, validateGatewayUpload } from "@/lib/ai-gateway";
 
 export const runtime = "nodejs";
 
 const limiter = createInMemoryRateLimiter(10 * 60 * 1000, 20);
-
-function jsonError(message: string, status = 400) {
-  return NextResponse.json({ error: message }, { status });
-}
-
-function requiredEnv() {
-  const backendUrl = process.env.OCT_AI_BACKEND_URL?.replace(/\/$/, "");
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const sharedSecret = process.env.AI_GATEWAY_SHARED_SECRET;
-  if (!backendUrl || !supabaseUrl || !serviceRoleKey || !sharedSecret) return null;
-  return { backendUrl, supabaseUrl, serviceRoleKey, sharedSecret };
-}
 
 function requestIsGradcam(request: NextRequest, incoming: FormData) {
   const headerMode = request.headers.get("x-afio-mode")?.trim().toLowerCase();
@@ -41,36 +25,13 @@ function requestIsGradcam(request: NextRequest, incoming: FormData) {
 }
 
 export async function POST(request: NextRequest) {
-  const env = requiredEnv();
+  const env = requiredGatewayEnv(["OCT_AI_BACKEND_URL", "OCT_GRADCAM_BACKEND_URL"]);
   if (!env) return jsonError("OCT gateway is not configured.", 500);
 
-  const authResult = await requireAuth(request);
-  if (authResult instanceof Response) return authResult;
+  const accessResult = await requireGatewayModuleAccess(request, env, "oct");
+  if (accessResult instanceof Response) return accessResult;
 
-  if (authResult.profile.role !== "afio_admin") {
-    if (!authResult.profile.clinic_id) {
-      return jsonError("You are not authorized to use the OCT module.", 403);
-    }
-
-    const admin = createClient(env.supabaseUrl, env.serviceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false }
-    });
-    const { data: entitlement, error: entitlementError } = await admin
-      .from("clinic_modules")
-      .select("module_id,is_enabled")
-      .eq("clinic_id", authResult.profile.clinic_id)
-      .eq("module_id", "oct")
-      .maybeSingle();
-
-    if (entitlementError) {
-      return jsonError("Could not verify OCT module access.", 500);
-    }
-    if (!entitlement || entitlement.is_enabled === false) {
-      return jsonError("You are not authorized to use the OCT module.", 403);
-    }
-  }
-
-  if (limiter.isRateLimited(rateLimitKey(request, authResult.user.id))) {
+  if (limiter.isRateLimited(rateLimitKey(request, accessResult.userId))) {
     return jsonError("Too many attempts. Please wait before trying again.", 429);
   }
 
@@ -86,34 +47,23 @@ export async function POST(request: NextRequest) {
 
   const isGradcam = requestIsGradcam(request, incoming);
 
-  const signedPayload = Buffer.from(await uploaded.arrayBuffer()).toString("base64");
-  const signedHeaders = buildSignedRequestHeaders(signedPayload, env.sharedSecret, {
-    signatureHeader: "X-AFIO-Signature",
-    timestampHeader: "X-AFIO-Timestamp"
-  });
-
-  const forward = new FormData();
-  forward.append("file", uploaded, uploaded.name || "oct-scan.jpg");
-
-  let response: Response;
   try {
-    response = await fetch(`${env.backendUrl}/${isGradcam ? "gradcam" : "predict"}`, {
-      method: "POST",
-      headers: signedHeaders,
-      body: forward
+    return await forwardSignedUpload({
+      backendUrl: env.backendUrl,
+      backendPath: `/${isGradcam ? "gradcam" : "predict"}`,
+      file: uploaded,
+      fieldName: "file",
+      sharedSecret: env.sharedSecret,
+      audit: {
+        supabaseUrl: env.supabaseUrl,
+        serviceRoleKey: env.serviceRoleKey,
+        moduleId: "oct",
+        userId: accessResult.userId,
+        clinicId: accessResult.clinicId,
+        route: "/api/ai/oct"
+      }
     });
   } catch {
     return jsonError("Could not reach OCT backend.", 502);
   }
-
-  const headers = new Headers();
-  const contentType = response.headers.get("content-type");
-  if (contentType) headers.set("content-type", contentType);
-  headers.set("Cache-Control", "no-store, max-age=0");
-
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers
-  });
 }

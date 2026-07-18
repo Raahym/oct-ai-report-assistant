@@ -34,7 +34,15 @@ export async function POST(request: NextRequest) {
       backendPath: "/predict",
       file: uploaded,
       fieldName: "image",
-      sharedSecret: env.sharedSecret
+      sharedSecret: env.sharedSecret,
+      audit: {
+        supabaseUrl: env.supabaseUrl,
+        serviceRoleKey: env.serviceRoleKey,
+        moduleId: "retina",
+        userId: accessResult.userId,
+        clinicId: accessResult.clinicId,
+        route: "/api/ai/retina/dr"
+      }
     });
   } catch {
     return jsonError("Could not reach Retina backend.", 502);
