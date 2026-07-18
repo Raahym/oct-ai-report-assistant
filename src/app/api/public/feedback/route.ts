@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => ({}));
   const type = (body.type === "complaint" ? "complaint" : "feedback") as FeedbackType;
-  const moduleId = ["oct", "vkg", "corneal", "retina"].includes(body.module_id) ? body.module_id as ModuleId : null;
+  const moduleId = ["oct", "vkg", "corneal", "corneal_ulcer", "retina"].includes(body.module_id) ? body.module_id as ModuleId : null;
   const clinicId = String(body.clinic_id ?? "").trim() || null;
   const hospitalName = String(body.hospital_name ?? "").trim() || null;
   const name = String(body.name ?? "").trim();

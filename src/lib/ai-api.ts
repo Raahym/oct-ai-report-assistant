@@ -117,10 +117,12 @@ export async function predictCorneal(file: File): Promise<BackendPrediction> {
 export async function predictCornealUlcer(file: File): Promise<BackendPrediction> {
   // Keep this backend split from the existing corneal ensemble services.
   const backendUrl = process.env.NEXT_PUBLIC_CORNEAL_ULCER_BACKEND_URL?.replace(/\/$/, "");
-  return postImagePrediction(
-    file,
-    backendUrl,
-    "Corneal ulcer disease backend is not connected. Add NEXT_PUBLIC_CORNEAL_ULCER_BACKEND_URL in Vercel/Render before running this screening."
+  return normalizeCornealUlcerPrediction(
+    await postImagePrediction(
+      file,
+      backendUrl,
+      "Corneal ulcer disease backend is not connected. Add NEXT_PUBLIC_CORNEAL_ULCER_BACKEND_URL in Vercel/Render before running this screening."
+    )
   );
 }
 
@@ -370,6 +372,55 @@ function normalizeVkgPrediction(prediction: BackendPrediction): BackendPredictio
   return {
     ...prediction,
     is_valid_oct: isValidVkg,
+  };
+}
+
+function normalizeCornealUlcerPrediction(prediction: BackendPrediction): BackendPrediction {
+  const rawProbabilities = (prediction.probabilities ?? {}) as Record<string, number>;
+  const flakyMixed = Number(
+    rawProbabilities.FLAKY_MIXED ??
+    rawProbabilities.flaky_mixed ??
+    rawProbabilities["Flaky/Mixed"] ??
+    rawProbabilities["flaky/mixed"] ??
+    rawProbabilities.flaky ??
+    rawProbabilities.mixed ??
+    0
+  );
+  const pointlike = Number(
+    rawProbabilities.POINTLIKE ??
+    rawProbabilities.pointlike ??
+    rawProbabilities.point_like ??
+    rawProbabilities["Point-like"] ??
+    rawProbabilities["point-like"] ??
+    0
+  );
+  const normalizedLabel = String(prediction.prediction ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_")
+    .replace(/\//g, "_");
+  const mappedPrediction =
+    normalizedLabel === "FLAKY_MIXED" || normalizedLabel === "FLAKY" || normalizedLabel === "MIXED"
+      ? "FLAKY_MIXED"
+      : normalizedLabel === "POINTLIKE" || normalizedLabel === "POINT_LIKE"
+        ? "POINTLIKE"
+        : flakyMixed >= pointlike
+          ? "FLAKY_MIXED"
+          : "POINTLIKE";
+  const probabilities = {
+    FLAKY_MIXED: flakyMixed,
+    POINTLIKE: pointlike,
+  };
+  const confidence = Number(prediction.confidence ?? probabilities[mappedPrediction] ?? 0);
+
+  return {
+    ...prediction,
+    prediction: mappedPrediction,
+    confidence,
+    probabilities,
+    is_valid_oct: prediction.is_valid_corneal ?? prediction.is_valid_oct ?? true,
+    model_name: prediction.model_name || "Corneal Ulcer Slit-Lamp Screening Model",
+    disclaimer: prediction.disclaimer || "Corneal ulcer slit-lamp screening output. Requires clinician review.",
   };
 }
 

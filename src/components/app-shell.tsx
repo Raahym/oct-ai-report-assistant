@@ -127,6 +127,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [openModules, setOpenModules] = useState<Record<string, boolean>>({});
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const [currentQuery, setCurrentQuery] = useState("");
 
   useEffect(() => {
     const saved = window.localStorage.getItem(THEME_KEY);
@@ -138,6 +139,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const nextQuery = window.location.search.replace(/^\?/, "");
+    setCurrentQuery((current) => current === nextQuery ? current : nextQuery);
+  });
+
+  useEffect(() => {
     if (!isAuthenticated || store.currentUser.role === "afio_admin") return;
     const nextOpen: Record<string, boolean> = {};
     store.visibleModuleIds.forEach((id) => {
@@ -146,14 +152,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       nextOpen[id] =
         pathname === parent.href ||
         pathname.startsWith(`${parent.href}/`) ||
-        children.some((child) => {
-          const childPath = child.href.split("?")[0];
-          const childModule = new URLSearchParams(child.href.split("?")[1] ?? "").get("module");
-          return (pathname === childPath || pathname.startsWith(`${childPath}/`)) && (!childModule || pathname.includes("/modules/") || window.location.search.includes(`module=${childModule}`));
-        });
+        children.some((child) => isHrefActive(child.href, pathname, currentQuery));
     });
-    setOpenModules((current) => ({ ...nextOpen, ...current }));
-  }, [isAuthenticated, pathname, store.currentUser.role, store.visibleModuleIds]);
+    setOpenModules((current) => ({ ...current, ...nextOpen }));
+  }, [currentQuery, isAuthenticated, pathname, store.currentUser.role, store.visibleModuleIds]);
 
   const toggleTheme = () => {
     setDarkMode((current) => {
@@ -276,10 +278,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 const Icon = item.icon;
                 const children = moduleTreeItems[moduleId] ?? [];
                 const isOpen = expandedModules[moduleId];
-                const active = pathname === item.href || pathname.startsWith(`${item.href}/`) || children.some((child) => {
-                  const childPath = child.href.split("?")[0];
-                  return pathname === childPath || pathname.startsWith(`${childPath}/`);
-                });
+                const active = pathname === item.href || pathname.startsWith(`${item.href}/`) || children.some((child) => isHrefActive(child.href, pathname, currentQuery));
                 return (
                   <div key={item.href}>
                     <div className={clsx("flex items-center rounded-md transition", active ? "bg-clinic-50 text-clinic-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950")}>
@@ -298,16 +297,16 @@ export function AppShell({ children }: { children: ReactNode }) {
                     {isOpen && !sidebarCollapsed ? (
                       <div className="ml-5 mt-1 space-y-1 border-l border-slate-200 pl-3">
                         {children.map((child) => (
-                          <NavLinkItem key={`${moduleId}-${child.label}-${child.href}`} item={child} pathname={pathname} nested />
+                          <NavLinkItem key={`${moduleId}-${child.label}-${child.href}`} item={child} pathname={pathname} currentQuery={currentQuery} nested />
                         ))}
                       </div>
                     ) : null}
                   </div>
                 );
               })}
-              <NavLinkItem item={baseNavItems[1]} pathname={pathname} collapsed={sidebarCollapsed} />
-              {store.currentUser.role === "hospital_admin" || store.currentUser.role === "admin" ? adminItems.map((item) => <NavLinkItem key={item.href} item={item} pathname={pathname} collapsed={sidebarCollapsed} />) : null}
-              {store.currentUser.role === "doctor" ? doctorItems.map((item) => <NavLinkItem key={item.href} item={item} pathname={pathname} collapsed={sidebarCollapsed} />) : null}
+              <NavLinkItem item={baseNavItems[1]} pathname={pathname} currentQuery={currentQuery} collapsed={sidebarCollapsed} />
+              {store.currentUser.role === "hospital_admin" || store.currentUser.role === "admin" ? adminItems.map((item) => <NavLinkItem key={item.href} item={item} pathname={pathname} currentQuery={currentQuery} collapsed={sidebarCollapsed} />) : null}
+              {store.currentUser.role === "doctor" ? doctorItems.map((item) => <NavLinkItem key={item.href} item={item} pathname={pathname} currentQuery={currentQuery} collapsed={sidebarCollapsed} />) : null}
             </>
           )}
         </nav>
@@ -380,17 +379,18 @@ export function AppShell({ children }: { children: ReactNode }) {
 function NavLinkItem({
   item,
   pathname,
+  currentQuery = "",
   nested = false,
   collapsed = false
 }: {
   item: { href: string; label: string; icon: React.ComponentType<{ size?: number }> };
   pathname: string;
+  currentQuery?: string;
   nested?: boolean;
   collapsed?: boolean;
 }) {
   const Icon = item.icon;
-  const itemPath = item.href.split("?")[0];
-  const active = pathname === itemPath || pathname.startsWith(`${itemPath}/`);
+  const active = isHrefActive(item.href, pathname, currentQuery);
   return (
     <Link
       href={item.href}
@@ -406,6 +406,15 @@ function NavLinkItem({
       {collapsed ? null : item.label}
     </Link>
   );
+}
+
+function isHrefActive(href: string, pathname: string, currentQuery = "") {
+  const [itemPath, itemQuery = ""] = href.split("?");
+  const pathMatches = pathname === itemPath || pathname.startsWith(`${itemPath}/`);
+  if (!pathMatches) return false;
+  const itemModule = new URLSearchParams(itemQuery).get("module");
+  if (!itemModule) return true;
+  return new URLSearchParams(currentQuery).get("module") === itemModule;
 }
 
 export function PageTitle({

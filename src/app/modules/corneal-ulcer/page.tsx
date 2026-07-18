@@ -1,5 +1,10 @@
+import { AppShell } from "@/components/app-shell";
 import { CornealUlcerModuleView } from "@/components/views";
 
 export default function CornealUlcerPage() {
-  return <CornealUlcerModuleView />;
+  return (
+    <AppShell>
+      <CornealUlcerModuleView />
+    </AppShell>
+  );
 }
