@@ -1,10 +1,16 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createInMemoryRateLimiter, rateLimitKey } from "@/lib/rate-limit";
-import { forwardSignedUpload, jsonError, requiredGatewayEnv, requireGatewayModuleAccess, validateGatewayUpload } from "@/lib/ai-gateway";
+import { buildSignedRequestHeaders } from "@/lib/request-signing";
+import { forwardSignedUpload, jsonError, requiredGatewayBaseEnv, requireGatewayModuleAccess, validateGatewayUpload } from "@/lib/ai-gateway";
 
 export const runtime = "nodejs";
 
 const limiter = createInMemoryRateLimiter(10 * 60 * 1000, 20);
+const GRADCAM_TIMEOUT_MS = 20_000;
+
+function envUrl(name: string) {
+  return process.env[name]?.replace(/\/$/, "");
+}
 
 function requestIsGradcam(request: NextRequest, incoming: FormData) {
   const headerMode = request.headers.get("x-afio-mode")?.trim().toLowerCase();
@@ -24,9 +30,35 @@ function requestIsGradcam(request: NextRequest, incoming: FormData) {
   );
 }
 
+async function fetchOptionalGradcam(input: {
+  backendUrl: string;
+  file: File;
+  sharedSecret: string;
+}) {
+  const payload = Buffer.from(await input.file.arrayBuffer()).toString("base64");
+  const headers = buildSignedRequestHeaders(payload, input.sharedSecret, {
+    signatureHeader: "X-AFIO-Signature",
+    timestampHeader: "X-AFIO-Timestamp",
+    requestId: crypto.randomUUID()
+  });
+
+  const formData = new FormData();
+  formData.append("file", input.file, input.file.name || "image.jpg");
+
+  const response = await fetch(`${input.backendUrl}/gradcam`, {
+    method: "POST",
+    headers,
+    body: formData,
+    signal: AbortSignal.timeout(GRADCAM_TIMEOUT_MS)
+  });
+  if (!response.ok) return null;
+  return response.json().catch(() => null) as Promise<Record<string, unknown> | null>;
+}
+
 export async function POST(request: NextRequest) {
-  const env = requiredGatewayEnv(["OCT_AI_BACKEND_URL", "OCT_GRADCAM_BACKEND_URL"]);
-  if (!env) return jsonError("OCT gateway is not configured.", 500);
+  const env = requiredGatewayBaseEnv();
+  const predictBackendUrl = envUrl("OCT_AI_BACKEND_URL");
+  if (!env || !predictBackendUrl) return jsonError("OCT gateway is not configured.", 500);
 
   const accessResult = await requireGatewayModuleAccess(request, env, "oct");
   if (accessResult instanceof Response) return accessResult;
@@ -48,9 +80,9 @@ export async function POST(request: NextRequest) {
   const isGradcam = requestIsGradcam(request, incoming);
 
   try {
-    return await forwardSignedUpload({
-      backendUrl: env.backendUrl,
-      backendPath: `/${isGradcam ? "gradcam" : "predict"}`,
+    const predictionResponse = await forwardSignedUpload({
+      backendUrl: predictBackendUrl,
+      backendPath: "/predict",
       file: uploaded,
       fieldName: "file",
       sharedSecret: env.sharedSecret,
@@ -61,6 +93,41 @@ export async function POST(request: NextRequest) {
         userId: accessResult.userId,
         clinicId: accessResult.clinicId,
         route: "/api/ai/oct"
+      }
+    });
+    if (!isGradcam || !predictionResponse.ok) return predictionResponse;
+
+    const prediction = await predictionResponse.json().catch(() => null) as Record<string, unknown> | null;
+    if (!prediction) return predictionResponse;
+
+    const gradcamBackendUrl = envUrl("OCT_GRADCAM_BACKEND_URL") ?? predictBackendUrl;
+    const gradcam = await fetchOptionalGradcam({
+      backendUrl: gradcamBackendUrl,
+      file: uploaded,
+      sharedSecret: env.sharedSecret
+    }).catch(() => null);
+
+    const heatmap =
+      gradcam?.gradcam_overlay_base64 ??
+      gradcam?.heatmap ??
+      gradcam?.heatmap_base64 ??
+      gradcam?.overlay ??
+      null;
+
+    const warnings = Array.isArray(prediction.validation_warnings)
+      ? prediction.validation_warnings
+      : [];
+
+    return NextResponse.json({
+      ...prediction,
+      ...(heatmap ? { gradcam_overlay_base64: heatmap, heatmap } : {}),
+      validation_warnings: heatmap
+        ? warnings
+        : [...warnings, "OCT Grad-CAM is currently unavailable; prediction completed without heatmap."]
+    }, {
+      headers: {
+        "Cache-Control": "no-store, max-age=0",
+        "X-AFIO-Request-Id": predictionResponse.headers.get("X-AFIO-Request-Id") ?? ""
       }
     });
   } catch {
