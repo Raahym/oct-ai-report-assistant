@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
   const env = requiredGatewayBaseEnv();
   if (!env) return jsonError("Corneal gateway is not configured.", 500);
 
-  const accessResult = await requireGatewayModuleAccess(request, env, "corneal");
+  const accessResult = await requireGatewayModuleAccess(request, env, "vkg");
   if (accessResult instanceof Response) return accessResult;
 
   if (limiter.isRateLimited(rateLimitKey(request, accessResult.userId))) {
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
           audit: {
             supabaseUrl: env.supabaseUrl,
             serviceRoleKey: env.serviceRoleKey,
-            moduleId: "corneal",
+            moduleId: "vkg",
             userId: accessResult.userId,
             clinicId: accessResult.clinicId,
             route: "/api/ai/corneal"
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     await incrementGatewayEntitlementUsage({
       supabaseUrl: env.supabaseUrl,
       serviceRoleKey: env.serviceRoleKey,
-      moduleId: "corneal",
+      moduleId: "vkg",
       userId: accessResult.userId,
       clinicId: accessResult.clinicId,
       route: "/api/ai/corneal"
