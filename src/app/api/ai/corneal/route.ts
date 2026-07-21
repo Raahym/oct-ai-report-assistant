@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { normalizeVkgEnsemblePrediction } from "@/lib/ai-api";
+import type { BackendPrediction } from "@/lib/types";
 import {
   configuredGatewayUrls,
   forwardSignedUpload,
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
   if (!backendUrls.length) return jsonError("Corneal gateway is not configured.", 500);
 
   try {
-    const predictions = await Promise.all(
+    const results = await Promise.allSettled(
       backendUrls.map(async (backendUrl) => {
         const response = await forwardSignedUpload({
           backendUrl,
@@ -83,6 +84,17 @@ export async function POST(request: NextRequest) {
         return response.json();
       })
     );
+    const predictions = results
+      .filter((result): result is PromiseFulfilledResult<BackendPrediction> => result.status === "fulfilled")
+      .map((result) => result.value);
+
+    if (!predictions.length) {
+      const detail = results
+        .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+        .map((result) => result.reason instanceof Error ? result.reason.message : "unknown backend error")
+        .join("; ");
+      return jsonError(detail ? `Corneal ensemble failed: ${detail}` : "Could not reach Corneal backend.", 502);
+    }
 
     await incrementGatewayEntitlementUsage({
       supabaseUrl: env.supabaseUrl,

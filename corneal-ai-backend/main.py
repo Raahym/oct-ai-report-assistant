@@ -6,6 +6,7 @@ import time
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from model import (
     DISCLAIMER,
@@ -106,7 +107,10 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    loaded_models, load_error = get_models()
+    if not loaded_models:
+        return JSONResponse({"status": "model_error", "detail": load_error}, status_code=503)
+    return {"status": "ok", "models": sorted(loaded_models.keys())}
 
 
 @app.post("/predict", response_model=CornealPrediction)

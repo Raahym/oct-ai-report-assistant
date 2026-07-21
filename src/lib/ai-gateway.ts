@@ -192,6 +192,9 @@ export async function forwardSignedUpload(input: {
   sharedSecret: string;
   extraHeaders?: Record<string, string>;
   incrementUsage?: boolean;
+  timeoutMs?: number;
+  retries?: number;
+  retryDelayMs?: number;
   audit?: {
     supabaseUrl: string;
     serviceRoleKey: string;
@@ -201,26 +204,49 @@ export async function forwardSignedUpload(input: {
     route: string;
   };
 }) {
-  const requestId = crypto.randomUUID();
+  const timeoutMs = input.timeoutMs ?? 45_000;
+  const retries = input.retries ?? 1;
+  const retryDelayMs = input.retryDelayMs ?? 1_500;
+  const retryableStatuses = new Set([408, 425, 429, 500, 502, 503, 504]);
   const startedAt = Date.now();
   const payload = Buffer.from(await input.file.arrayBuffer()).toString("base64");
-  const signedHeaders = buildSignedRequestHeaders(payload, input.sharedSecret, {
-    signatureHeader: "X-AFIO-Signature",
-    timestampHeader: "X-AFIO-Timestamp",
-    requestId
-  });
 
-  const forward = new FormData();
-  forward.append(input.fieldName ?? "file", input.file, input.file.name || "image.jpg");
+  let response: Response | undefined;
+  let lastError: unknown;
+  let requestId = crypto.randomUUID();
 
-  const response = await fetch(`${input.backendUrl}${input.backendPath}`, {
-    method: "POST",
-    headers: {
-      ...signedHeaders,
-      ...(input.extraHeaders ?? {})
-    },
-    body: forward
-  });
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    requestId = crypto.randomUUID();
+    const signedHeaders = buildSignedRequestHeaders(payload, input.sharedSecret, {
+      signatureHeader: "X-AFIO-Signature",
+      timestampHeader: "X-AFIO-Timestamp",
+      requestId
+    });
+
+    const forward = new FormData();
+    forward.append(input.fieldName ?? "file", input.file, input.file.name || "image.jpg");
+
+    try {
+      response = await fetch(`${input.backendUrl}${input.backendPath}`, {
+        method: "POST",
+        headers: {
+          ...signedHeaders,
+          ...(input.extraHeaders ?? {})
+        },
+        body: forward,
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      if (!retryableStatuses.has(response.status) || attempt === retries) break;
+    } catch (error) {
+      lastError = error;
+      if (attempt === retries) throw error;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+  }
+
+  if (!response) throw lastError instanceof Error ? lastError : new Error("AI backend request failed.");
+
   await recordGatewayRequest(input.audit, {
     requestId,
     backendPath: input.backendPath,

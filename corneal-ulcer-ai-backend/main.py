@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from PIL import Image, UnidentifiedImageError
 from tensorflow.keras.models import load_model
 
@@ -179,7 +180,10 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    loaded_model = get_model()
+    if loaded_model is None:
+        return JSONResponse({"status": "model_error", "detail": model_error}, status_code=503)
+    return {"status": "ok", "model": MODEL_NAME, "version": MODEL_VERSION}
 
 
 @app.post("/predict")

@@ -5,6 +5,7 @@ services:
     rootDir: oct-ai-backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
       - key: ALLOWED_ORIGINS
         sync: false
@@ -17,6 +18,8 @@ services:
       - key: EMAIL_FROM
         sync: false
       - key: AI_GATEWAY_SHARED_SECRET
+        sync: false
+      - key: OCT_GRADCAM_BACKEND_URL
         sync: false
   - type: web
     name: afio-oct-gradcam-backend
@@ -129,7 +132,7 @@ services:
     buildCommand: >-
       python -m pip install gdown &&
       python -m gdown --folder https://drive.google.com/drive/folders/1VBxwdx-CoSBP906N3Zx_gEjRGfeQtglo --output ../models &&
-      find ../models -name 'smoke_test.onnx*' -type f -exec sh -c 'for f do [ "$(dirname "$f")" = "../models" ] || cp "$f" ../models/; done' sh {} + &&
+      find ../models -name '*.onnx*' -type f -exec sh -c 'for f do [ "$(dirname "$f")" = "../models" ] || cp "$f" ../models/; done' sh {} + &&
       npm install
     startCommand: node server.js
     healthCheckPath: /health
@@ -153,7 +156,7 @@ services:
     buildCommand: >-
       python -m pip install gdown &&
       python -m gdown --folder https://drive.google.com/drive/folders/1VBxwdx-CoSBP906N3Zx_gEjRGfeQtglo --output ../models &&
-      find ../models -name 'glaucoma_model.onnx*' -type f -exec sh -c 'for f do [ "$(dirname "$f")" = "../models" ] || cp "$f" ../models/; done' sh {} + &&
+      find ../models -name 'smoke_test.onnx*' -type f -exec sh -c 'for f do [ "$(dirname "$f")" = "../models" ] || cp "$f" ../models/; done' sh {} + &&
       npm install
     startCommand: node server.js
     healthCheckPath: /health
@@ -183,7 +186,7 @@ services:
     buildCommand: >-
       python -m pip install gdown &&
       python -m gdown --folder https://drive.google.com/drive/folders/1VBxwdx-CoSBP906N3Zx_gEjRGfeQtglo --output ../models &&
-      find ../models -name 'hr_efficientnet_model.onnx*' -type f -exec sh -c 'for f do [ "$(dirname "$f")" = "../models" ] || cp "$f" ../models/; done' sh {} + &&
+      find ../models -name 'glaucoma_model.onnx*' -type f -exec sh -c 'for f do [ "$(dirname "$f")" = "../models" ] || cp "$f" ../models/; done' sh {} + &&
       npm install
     startCommand: node server.js
     healthCheckPath: /health
@@ -209,6 +212,7 @@ services:
     buildCommand: >-
       python -m pip install gdown &&
       python -m gdown --folder https://drive.google.com/drive/folders/1VBxwdx-CoSBP906N3Zx_gEjRGfeQtglo --output ../models &&
+      find ../models -name 'hr_efficientnet_model.onnx*' -type f -exec sh -c 'for f do [ "$(dirname "$f")" = "../models" ] || cp "$f" ../models/; done' sh {} + &&
       npm install
     startCommand: node server.js
     healthCheckPath: /health

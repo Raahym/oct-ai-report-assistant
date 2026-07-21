@@ -20,6 +20,7 @@ import requests
 import torch
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 from torchvision import models, transforms
@@ -629,7 +630,9 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok" if model is not None else "model_error"}
+    if model is None:
+        return JSONResponse({"status": "model_error", "detail": model_error}, status_code=503)
+    return {"status": "ok", "model": MODEL_NAME, "version": MODEL_VERSION}
 
 
 @app.post("/reports/check")

@@ -2,7 +2,7 @@ name: Keep Render Model Backends Awake
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -13,21 +13,32 @@ jobs:
     steps:
       - name: Ping live model health endpoints
         run: |
-          set -e
+          set +e
           urls=(
             "https://oct-ai-backend.onrender.com/health"
+            "https://afio-oct-gradcam-backend.onrender.com/health"
             "https://afio-corneal-ai-backend.onrender.com/health"
             "https://afio-corneal-resnet-backend.onrender.com/health"
             "https://afio-corneal-densenet-backend.onrender.com/health"
             "https://afio-corneal-efficientnet-backend.onrender.com/health"
+            "https://afio-corneal-ulcer-backend.onrender.com/health"
             "https://afio-retina-ai-backend.onrender.com/health"
+            "https://afio-retina-dr-backend.onrender.com/health"
+            "https://afio-retina-glaucoma-backend.onrender.com/health"
+            "https://afio-retina-hr-backend.onrender.com/health"
+            "https://13.48.31.108.sslip.io/health"
+            "https://16.16.104.107.sslip.io/health"
+            "https://16.16.233.198.sslip.io/health"
           )
 
+          failed=0
           for url in "${urls[@]}"; do
             echo "Pinging $url"
             curl --fail --show-error --silent --max-time 90 \
               --retry 2 \
               --retry-delay 10 \
-              "$url"
+              "$url" || failed=$((failed + 1))
             echo
           done
+
+          echo "$failed endpoint(s) failed to respond during keep-awake ping."
