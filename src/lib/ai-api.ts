@@ -104,12 +104,10 @@ export async function predictRetina(file: File, options: RetinaPredictionOptions
     throw new Error("Select at least one Retina screening model to run.");
   }
 
-  const dr = services.dr
-    ? await postGatewayPrediction("/api/ai/retina/dr", file, "image").catch((error) => {
-        throw new Error(`Retina DR endpoint failed: ${error instanceof Error ? error.message : "unknown error"}`);
-      })
-    : undefined;
-  const [drGradcamResult, glaucomaResult, hypertensiveRetinopathyResult] = await Promise.allSettled([
+  const [drResult, drGradcamResult, glaucomaResult, hypertensiveRetinopathyResult] = await Promise.allSettled([
+    services.dr
+      ? postGatewayPrediction("/api/ai/retina/dr", file, "image")
+      : Promise.resolve(undefined),
     services.dr
       ? postGatewayPrediction("/api/ai/retina/dr-gradcam", file, "image")
       : Promise.reject(new Error("DR not selected.")),
@@ -120,6 +118,10 @@ export async function predictRetina(file: File, options: RetinaPredictionOptions
       ? postGatewayPrediction("/api/ai/retina/hr", file, "image")
       : Promise.reject(new Error("Hypertensive retinopathy not selected.")),
   ]);
+  if (services.dr && drResult.status === "rejected") {
+    throw new Error(`Retina DR endpoint failed: ${drResult.reason instanceof Error ? drResult.reason.message : "unknown error"}`);
+  }
+  const dr = services.dr && drResult.status === "fulfilled" ? drResult.value : undefined;
   const optionalWarnings = [
     services.dr && drGradcamResult.status === "rejected" ? `DR Grad-CAM endpoint unavailable: ${drGradcamResult.reason instanceof Error ? drGradcamResult.reason.message : "unknown error"}` : "",
     services.glaucoma && glaucomaResult.status === "rejected" ? `Glaucoma endpoint unavailable: ${glaucomaResult.reason instanceof Error ? glaucomaResult.reason.message : "unknown error"}` : "",
