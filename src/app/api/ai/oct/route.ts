@@ -6,10 +6,18 @@ import { forwardSignedUpload, jsonError, requiredGatewayBaseEnv, requireGatewayM
 export const runtime = "nodejs";
 
 const limiter = createInMemoryRateLimiter(10 * 60 * 1000, 20);
-const GRADCAM_TIMEOUT_MS = 20_000;
+const GRADCAM_TIMEOUT_MS = 90_000;
+const OCT_GRADCAM_FALLBACK_URLS = [
+  "https://afio-oct-gradcam-backend.onrender.com",
+  "https://16.16.104.107.sslip.io"
+];
 
 function envUrl(name: string) {
   return process.env[name]?.replace(/\/$/, "");
+}
+
+function uniqueUrls(urls: Array<string | undefined>) {
+  return Array.from(new Set(urls.filter(Boolean) as string[]));
 }
 
 function requestIsGradcam(request: NextRequest, incoming: FormData) {
@@ -31,28 +39,42 @@ function requestIsGradcam(request: NextRequest, incoming: FormData) {
 }
 
 async function fetchOptionalGradcam(input: {
-  backendUrl: string;
+  backendUrls: string[];
   file: File;
   sharedSecret: string;
 }) {
   const payload = Buffer.from(await input.file.arrayBuffer()).toString("base64");
-  const headers = buildSignedRequestHeaders(payload, input.sharedSecret, {
-    signatureHeader: "X-AFIO-Signature",
-    timestampHeader: "X-AFIO-Timestamp",
-    requestId: crypto.randomUUID()
-  });
 
-  const formData = new FormData();
-  formData.append("file", input.file, input.file.name || "image.jpg");
+  for (const backendUrl of input.backendUrls) {
+    const headers = buildSignedRequestHeaders(payload, input.sharedSecret, {
+      signatureHeader: "X-AFIO-Signature",
+      timestampHeader: "X-AFIO-Timestamp",
+      requestId: crypto.randomUUID()
+    });
 
-  const response = await fetch(`${input.backendUrl}/gradcam`, {
-    method: "POST",
-    headers,
-    body: formData,
-    signal: AbortSignal.timeout(GRADCAM_TIMEOUT_MS)
-  });
-  if (!response.ok) return null;
-  return response.json().catch(() => null) as Promise<Record<string, unknown> | null>;
+    const formData = new FormData();
+    formData.append("file", input.file, input.file.name || "image.jpg");
+
+    const response = await fetch(`${backendUrl}/gradcam`, {
+      method: "POST",
+      headers,
+      body: formData,
+      signal: AbortSignal.timeout(GRADCAM_TIMEOUT_MS)
+    }).catch(() => null);
+    if (!response?.ok) continue;
+
+    const gradcam = await response.json().catch(() => null) as Record<string, unknown> | null;
+    if (
+      gradcam?.gradcam_overlay_base64 ||
+      gradcam?.heatmap ||
+      gradcam?.heatmap_base64 ||
+      gradcam?.overlay
+    ) {
+      return gradcam;
+    }
+  }
+
+  return null;
 }
 
 export async function POST(request: NextRequest) {
@@ -100,9 +122,13 @@ export async function POST(request: NextRequest) {
     const prediction = await predictionResponse.json().catch(() => null) as Record<string, unknown> | null;
     if (!prediction) return predictionResponse;
 
-    const gradcamBackendUrl = envUrl("OCT_GRADCAM_BACKEND_URL") ?? predictBackendUrl;
+    const gradcamBackendUrls = uniqueUrls([
+      envUrl("OCT_GRADCAM_BACKEND_URL"),
+      ...OCT_GRADCAM_FALLBACK_URLS,
+      predictBackendUrl
+    ]);
     const gradcam = await fetchOptionalGradcam({
-      backendUrl: gradcamBackendUrl,
+      backendUrls: gradcamBackendUrls,
       file: uploaded,
       sharedSecret: env.sharedSecret
     }).catch(() => null);
