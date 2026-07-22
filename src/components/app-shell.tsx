@@ -96,6 +96,7 @@ const adminItems = [
 
 const THEME_KEY = "afio-theme";
 const SIDEBAR_KEY = "afio-sidebar-collapsed";
+const WARMUP_KEY = "afio-model-warmup-at";
 const businessBlockedClinicalRoutes = ["/modules", "/patients", "/scans", "/reports", "/admin/templates"];
 
 function EyeDepartmentLogo() {
@@ -171,6 +172,14 @@ export function AppShell({ children }: { children: ReactNode }) {
       router.replace(`/login?next=${encodeURIComponent(pathname)}`);
     }
   }, [store.ready, isAuthenticated, pathname, router]);
+
+  useEffect(() => {
+    if (!store.ready || !isAuthenticated) return;
+    const lastWarmup = Number(window.sessionStorage.getItem(WARMUP_KEY) ?? 0);
+    if (Date.now() - lastWarmup < 5 * 60 * 1000) return;
+    window.sessionStorage.setItem(WARMUP_KEY, String(Date.now()));
+    fetch("/api/ai/warmup", { cache: "no-store" }).catch(() => undefined);
+  }, [store.ready, isAuthenticated]);
 
   const businessOnClinicalRoute =
     store.ready &&
