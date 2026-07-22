@@ -38,6 +38,18 @@ const ALL_BUSINESS_PERMISSIONS: BusinessPermissionKey[] = [
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 
+async function syncServerSession(accessToken?: string | null) {
+  if (!accessToken) return;
+  await fetch("/api/auth/session", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` }
+  }).catch(() => undefined);
+}
+
+async function clearServerSession() {
+  await fetch("/api/auth/session", { method: "DELETE" }).catch(() => undefined);
+}
+
 const AFIO_DEMO_HOSPITAL_ID = "hospital_afio_demo";
 const SHIFA_HOSPITAL_ID = "hospital_shifa";
 const ALNOOR_HOSPITAL_ID = "hospital_alnoor";
@@ -926,8 +938,12 @@ export function useDemoStore() {
         return;
       }
 
+      const { data: sessionData } = await supabase.auth.getSession();
+      await syncServerSession(sessionData.session?.access_token);
+
       const { data: authData } = await supabase.auth.getUser();
       if (!authData.user || cancelled) {
+        await clearServerSession();
         setData({ ...emptyData, hospitals: await loadHospitalsForSignup() });
         setMode("supabase");
         setReady(true);
@@ -939,6 +955,7 @@ export function useDemoStore() {
         await loadSupabaseData(authData.user);
       } catch {
         await supabase.auth.signOut();
+        await clearServerSession();
         setSessionUser(null);
         setData(emptyData);
       } finally {
@@ -952,10 +969,12 @@ export function useDemoStore() {
       const user = session?.user ?? null;
       setSessionUser(user);
       if (user) {
+        void syncServerSession(session?.access_token);
         window.setTimeout(() => {
           void loadSupabaseData(user);
         }, 0);
       } else {
+        void clearServerSession();
         setMode("supabase");
         setData(emptyData);
       }
@@ -1003,12 +1022,14 @@ export function useDemoStore() {
       if (error) throw new Error(error.message);
       if (!authUser) throw new Error("No active Supabase session was returned. Check your email confirmation settings.");
 
+      await syncServerSession(signInData.session?.access_token);
       await ensureProfile(authUser);
       setSessionUser(authUser);
       try {
         await loadSupabaseData(authUser);
       } catch (err) {
         await supabase.auth.signOut();
+        await clearServerSession();
         setSessionUser(null);
         setData(emptyData);
         throw err;
@@ -1105,6 +1126,7 @@ export function useDemoStore() {
     },
     async logout() {
       if (supabase) await supabase.auth.signOut();
+      await clearServerSession();
       setMode(supabase ? "supabase" : "demo");
       setSessionUser(null);
       setData(supabase ? emptyData : readStore());
