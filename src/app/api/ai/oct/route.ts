@@ -6,6 +6,7 @@ import { forwardSignedUpload, jsonError, requiredGatewayBaseEnv, requireGatewayM
 export const runtime = "nodejs";
 
 const limiter = createInMemoryRateLimiter(10 * 60 * 1000, 20);
+const OCT_PREDICT_TIMEOUT_MS = 120_000;
 const GRADCAM_TIMEOUT_MS = 90_000;
 const OCT_GRADCAM_FALLBACK_URLS = [
   "https://afio-oct-gradcam-backend.onrender.com",
@@ -108,6 +109,9 @@ export async function POST(request: NextRequest) {
       file: uploaded,
       fieldName: "file",
       sharedSecret: env.sharedSecret,
+      timeoutMs: OCT_PREDICT_TIMEOUT_MS,
+      retries: 2,
+      retryDelayMs: 2_500,
       audit: {
         supabaseUrl: env.supabaseUrl,
         serviceRoleKey: env.serviceRoleKey,
@@ -157,6 +161,6 @@ export async function POST(request: NextRequest) {
       }
     });
   } catch {
-    return jsonError("Could not reach OCT backend.", 502);
+    return jsonError("OCT screening service is warming up or temporarily busy. Please retry this scan in a few seconds.", 502);
   }
 }

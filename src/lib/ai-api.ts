@@ -19,6 +19,16 @@ async function currentSupabaseJwt() {
   return data.session?.access_token ?? null;
 }
 
+function friendlyPredictionError(message: string) {
+  if (/warming up|temporarily busy|could not reach|gateway|timeout|timed out|failed to fetch|backend/i.test(message)) {
+    return "Screening service is warming up. Please retry this scan in a few seconds.";
+  }
+  if (/AI prediction failed/i.test(message)) {
+    return "Screening could not complete. Please retry this scan.";
+  }
+  return message;
+}
+
 async function postGatewayPrediction(
   routePath: string,
   file: File,
@@ -56,7 +66,7 @@ async function postGatewayPrediction(
     } catch {
       // Keep the generic message if the gateway did not return JSON.
     }
-    throw new Error(detail);
+    throw new Error(friendlyPredictionError(detail));
   }
 
   const prediction = (await response.json()) as BackendPrediction;
