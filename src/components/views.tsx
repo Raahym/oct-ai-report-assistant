@@ -2575,6 +2575,13 @@ export function UploadScanView() {
         : predictOCTWithGradcam(file);
   };
 
+  const warmModelsBeforeAnalysis = async () => {
+    await Promise.race([
+      fetch("/api/ai/warmup", { cache: "no-store" }).catch(() => undefined),
+      new Promise((resolve) => window.setTimeout(resolve, 2_000))
+    ]);
+  };
+
   const submit = async () => {
     setError("");
     setAnalysisWarning("");
@@ -2589,6 +2596,7 @@ export function UploadScanView() {
       if (moduleId === "corneal") {
         throw new Error(`${moduleLabel} screening backend is not connected yet. Use this module workspace for patient setup until the service is live.`);
       }
+      await warmModelsBeforeAnalysis();
       const readyPatientId = await ensurePatient();
       let firstScanId = "";
       for (const side of selectedEyes) {

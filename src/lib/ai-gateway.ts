@@ -204,9 +204,9 @@ export async function forwardSignedUpload(input: {
     route: string;
   };
 }) {
-  const timeoutMs = input.timeoutMs ?? 45_000;
-  const retries = input.retries ?? 1;
-  const retryDelayMs = input.retryDelayMs ?? 1_500;
+  const timeoutMs = input.timeoutMs ?? 90_000;
+  const retries = input.retries ?? 2;
+  const retryDelayMs = input.retryDelayMs ?? 2_000;
   const retryableStatuses = new Set([408, 425, 429, 500, 502, 503, 504]);
   const startedAt = Date.now();
   const payload = Buffer.from(await input.file.arrayBuffer()).toString("base64");
