@@ -505,41 +505,47 @@ function ScanImageActions({
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   return (
-    <div className="mt-3 grid gap-2 sm:flex sm:flex-wrap">
-      <a href={scan.imageUrl} target="_blank" rel="noreferrer" className="block">
-        <Button className="w-full sm:w-auto" variant="secondary">
-          <Eye size={16} />
-          View Original
-        </Button>
-      </a>
-      <Button className="w-full sm:w-auto" variant="secondary" onClick={() => void downloadImage(scan.imageUrl, `OCT_${patientCode ?? scan.id}.jpg`)}>
-        <Download size={16} />
-        Download Image
-      </Button>
-      {canManage && onChangePhoto ? (
-        <>
-          <input
-            ref={fileRef}
-            className="hidden"
-            type="file"
-            accept="image/*"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
-              if (file) void onChangePhoto(file);
-            }}
-          />
-          <Button className="w-full sm:w-auto" variant="secondary" disabled={busy} onClick={() => fileRef.current?.click()}>
-            <Upload size={16} />
-            Change Photo
+    <div className="mt-5 flex flex-col gap-3 border-t border-slate-200 pt-5">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <a href={scan.imageUrl} target="_blank" rel="noreferrer" className="block">
+          <Button className="w-full" variant="secondary">
+            <Eye size={16} />
+            View Original
           </Button>
-        </>
-      ) : null}
-      {canManage && onDeleteScan ? (
-        <Button className="w-full sm:w-auto" variant="danger" disabled={busy} onClick={() => void onDeleteScan()}>
-          <Trash2 size={16} />
-          Delete Scan
+        </a>
+        <Button className="w-full" variant="secondary" onClick={() => void downloadImage(scan.imageUrl, `OCT_${patientCode ?? scan.id}.jpg`)}>
+          <Download size={16} />
+          Download Image
         </Button>
+      </div>
+      {canManage ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {onChangePhoto ? (
+            <>
+              <input
+                ref={fileRef}
+                className="hidden"
+                type="file"
+                accept="image/*"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  if (file) void onChangePhoto(file);
+                }}
+              />
+              <Button className="w-full" variant="secondary" disabled={busy} onClick={() => fileRef.current?.click()}>
+                <Upload size={16} />
+                Change Photo
+              </Button>
+            </>
+          ) : <span />}
+          {onDeleteScan ? (
+            <Button className="w-full" variant="danger" disabled={busy} onClick={() => void onDeleteScan()}>
+              <Trash2 size={16} />
+              Delete Scan
+            </Button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
@@ -2877,13 +2883,13 @@ export function AnalysisView({ id }: { id: string }) {
       />
       <div className="grid gap-5 lg:grid-cols-[minmax(360px,.95fr)_minmax(560px,1.05fr)]">
         <Card className="p-5">
-          <div className={aiResult?.heatmapUrl ? "grid gap-4 xl:grid-cols-2" : ""}>
+          <div className="space-y-5">
             <div>
-              <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Original image</p>
+              <p className="mb-3 text-xs font-black uppercase tracking-wide text-slate-500">Original image</p>
               <button type="button" className="block w-full text-left" onClick={() => openImageInNewTab(scan.imageUrl)}>
-                <img src={scan.imageUrl} alt="Original uploaded scan" className="aspect-[4/3] w-full rounded-md bg-slate-900 object-contain" />
+                <img src={scan.imageUrl} alt="Original uploaded scan" className="aspect-[16/9] w-full rounded-md bg-slate-900 object-contain shadow-sm" />
               </button>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <Button className="w-full" variant="secondary" onClick={() => openImageInNewTab(scan.imageUrl)}>
                   <Eye size={16} />
                   View Larger
@@ -2896,11 +2902,11 @@ export function AnalysisView({ id }: { id: string }) {
             </div>
             {aiResult?.heatmapUrl ? (
               <div>
-                <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Grad-CAM overlay</p>
+                <p className="mb-3 text-xs font-black uppercase tracking-wide text-slate-500">Grad-CAM overlay</p>
                 <button type="button" className="block w-full text-left" onClick={() => openImageInNewTab(imageDisplaySource(aiResult.heatmapUrl))}>
-                  <img src={imageDisplaySource(aiResult.heatmapUrl)} alt="Grad-CAM heatmap overlay" className="aspect-[4/3] w-full rounded-md bg-slate-900 object-contain" />
+                  <img src={imageDisplaySource(aiResult.heatmapUrl)} alt="Grad-CAM heatmap overlay" className="aspect-[16/9] w-full rounded-md bg-slate-900 object-contain shadow-sm" />
                 </button>
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <Button className="w-full" variant="secondary" onClick={() => openImageInNewTab(imageDisplaySource(aiResult.heatmapUrl))}>
                     <Eye size={16} />
                     View Larger
@@ -2910,7 +2916,6 @@ export function AnalysisView({ id }: { id: string }) {
                     Download Grad-CAM
                   </Button>
                 </div>
-                <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500">Attention overlay for quick comparison. Not a segmentation map.</p>
               </div>
             ) : null}
           </div>
