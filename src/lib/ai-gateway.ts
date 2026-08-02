@@ -2,7 +2,6 @@ import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { buildSignedRequestHeaders } from "@/lib/request-signing";
-import { isOfflineMode } from "@/lib/config";
 
 export type GatewayEnv = {
   backendUrl: string;
@@ -35,15 +34,6 @@ export function jsonError(message: string, status = 400) {
 
 export function requiredGatewayEnv(backendUrlEnvNames: string[]) {
   const backendUrl = backendUrlEnvNames.map((name) => process.env[name]?.replace(/\/$/, "")).find(Boolean);
-  if (isOfflineMode()) {
-    if (!backendUrl) return null;
-    return {
-      backendUrl,
-      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL || "http://offline.local",
-      serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || "offline_key",
-      sharedSecret: process.env.AI_GATEWAY_SHARED_SECRET || ""
-    } satisfies GatewayEnv;
-  }
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const sharedSecret = process.env.AI_GATEWAY_SHARED_SECRET;
@@ -52,13 +42,6 @@ export function requiredGatewayEnv(backendUrlEnvNames: string[]) {
 }
 
 export function requiredGatewayBaseEnv(): GatewayBaseEnv | null {
-  if (isOfflineMode()) {
-    return {
-      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL || "http://offline.local",
-      serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || "offline_key",
-      sharedSecret: process.env.AI_GATEWAY_SHARED_SECRET || ""
-    };
-  }
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const sharedSecret = process.env.AI_GATEWAY_SHARED_SECRET;
@@ -83,14 +66,6 @@ export async function requireGatewayModuleAccess(
 ): Promise<GatewayAuthResult> {
   const authResult = await requireAuth(request);
   if (authResult instanceof Response) return authResult;
-
-  if (isOfflineMode()) {
-    return {
-      userId: authResult.user.id,
-      clinicId: typeof authResult.profile.clinic_id === "string" ? authResult.profile.clinic_id : null,
-      role: typeof authResult.profile.role === "string" ? authResult.profile.role : null
-    };
-  }
 
   if (authResult.profile.role === "afio_admin") {
     return {
@@ -310,7 +285,7 @@ export async function incrementGatewayEntitlementUsage(
       }
     | undefined
 ) {
-  if (!audit?.clinicId || isOfflineMode()) return;
+  if (!audit?.clinicId) return;
 
   try {
     const admin = createClient(audit.supabaseUrl, audit.serviceRoleKey, {
@@ -364,7 +339,7 @@ async function recordGatewayRequest(
     contentType: string;
   }
 ) {
-  if (!audit || isOfflineMode()) return;
+  if (!audit) return;
 
   try {
     const admin = createClient(audit.supabaseUrl, audit.serviceRoleKey, {
