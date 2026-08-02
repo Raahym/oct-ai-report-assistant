@@ -1,5 +1,6 @@
 import type { BackendPrediction } from "./types";
 import { supabase } from "./supabase";
+import { isOfflineMode } from "./config";
 
 export type RetinaServiceSelection = {
   dr: boolean;
@@ -36,7 +37,7 @@ async function postGatewayPrediction(
   requestHeaders: Record<string, string> = {}
 ): Promise<BackendPrediction> {
   const token = await currentSupabaseJwt();
-  if (!token) {
+  if (!token && !isOfflineMode()) {
     throw new Error("You must be signed in to run AI analysis.");
   }
 
@@ -44,14 +45,16 @@ async function postGatewayPrediction(
   formData.append(fieldName, file);
   const startedAt = performance.now();
 
+  const headers: Record<string, string> = { ...requestHeaders };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   let response: Response;
   try {
     response = await fetch(routePath, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...requestHeaders
-      },
+      headers,
       body: formData
     });
   } catch {

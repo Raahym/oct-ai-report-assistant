@@ -1,21 +1,11 @@
-node_modules
-.next
-out
-.env
-.env.local
-*.log
-*.tsbuildinfo
-http*.txt
+# Python
+**/.venv/
 __pycache__/
 *.pyc
-backend/.venv
-backend/saved_model/*.pth
-oct-ai-backend/.next/
-models/
-retina-ai-backend/node_modules/
-retina-ai-backend/__pycache__/
 
-.vercel
-.env*
-AFIO_PRIVATE_SECURITY_NOTES/
-tmp-drive-check-*/
+# Node
+node_modules/
+.next/
+
+# macOS
+.DS_Store

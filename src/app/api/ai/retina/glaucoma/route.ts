@@ -8,6 +8,7 @@ import {
   validateGatewayUpload
 } from "@/lib/ai-gateway";
 import { createInMemoryRateLimiter, rateLimitKey } from "@/lib/rate-limit";
+import { isOfflineMode } from "@/lib/config";
 
 export const runtime = "nodejs";
 
@@ -16,7 +17,11 @@ const BACKEND_URL_ENV_NAMES = ["RETINA_GLAUCOMA_BACKEND_URL"];
 const AWS_GLAUCOMA_FALLBACK_URL = "https://16.16.233.198.sslip.io";
 
 function glaucomaBackendUrls() {
-  return Array.from(new Set([...configuredGatewayUrls(BACKEND_URL_ENV_NAMES), AWS_GLAUCOMA_FALLBACK_URL]));
+  const configured = configuredGatewayUrls(BACKEND_URL_ENV_NAMES);
+  if (isOfflineMode()) {
+    return Array.from(new Set(configured));
+  }
+  return Array.from(new Set([...configured, AWS_GLAUCOMA_FALLBACK_URL]));
 }
 
 export async function POST(request: NextRequest) {
