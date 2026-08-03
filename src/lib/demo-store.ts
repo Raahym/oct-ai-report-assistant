@@ -928,17 +928,18 @@ export function useDemoStore() {
 
   useEffect(() => {
     let cancelled = false;
+    const offline = isOfflineMode();
+
+    if (offline || !supabase) {
+      const localData = readStore();
+      setData(localData);
+      writeStore(localData);
+      setMode("demo");
+      setReady(true);
+      return;
+    }
 
     async function init() {
-      if (!supabase || isOfflineMode()) {
-        const localData = readStore();
-        setData(localData);
-        writeStore(localData);
-        setMode("demo");
-        setReady(true);
-        return;
-      }
-
       const { data: sessionData } = await supabase.auth.getSession();
       await syncServerSession(sessionData.session?.access_token);
 
@@ -966,7 +967,7 @@ export function useDemoStore() {
 
     init();
 
-    if (isOfflineMode()) return;
+    if (offline) return;
 
     const subscription = supabase?.auth.onAuthStateChange((_event, session) => {
       const user = session?.user ?? null;
