@@ -33,7 +33,7 @@ export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   if (!isProtectedPath(pathname)) return NextResponse.next();
 
-  if (isOfflineMode() && (pathname === "/modules" || pathname.startsWith("/modules/"))) {
+  if (isOfflineMode()) {
     return NextResponse.next();
   }
 

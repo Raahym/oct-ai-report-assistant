@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isOfflineMode } from "@/lib/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,9 +31,13 @@ function configuredHealthEndpoints() {
     process.env.RETINA_DR_GRADCAM_BACKEND_URL
   ];
 
+  const candidateUrls = isOfflineMode()
+    ? envUrls
+    : [...envUrls, ...FALLBACK_HEALTH_ENDPOINTS];
+
   return Array.from(
     new Set(
-      [...envUrls, ...FALLBACK_HEALTH_ENDPOINTS]
+      candidateUrls
         .filter((url): url is string => Boolean(url))
         .map((url) => {
           const cleanUrl = url.replace(/\/$/, "");

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createInMemoryRateLimiter, rateLimitKey } from "@/lib/rate-limit";
 import { buildSignedRequestHeaders } from "@/lib/request-signing";
 import { forwardSignedUpload, jsonError, requiredGatewayBaseEnv, requireGatewayModuleAccess, validateGatewayUpload } from "@/lib/ai-gateway";
+import { isOfflineMode } from "@/lib/config";
 
 export const runtime = "nodejs";
 
@@ -126,11 +127,13 @@ export async function POST(request: NextRequest) {
     const prediction = await predictionResponse.json().catch(() => null) as Record<string, unknown> | null;
     if (!prediction) return predictionResponse;
 
-    const gradcamBackendUrls = uniqueUrls([
-      envUrl("OCT_GRADCAM_BACKEND_URL"),
-      ...OCT_GRADCAM_FALLBACK_URLS,
-      predictBackendUrl
-    ]);
+    const gradcamBackendUrls = isOfflineMode()
+      ? uniqueUrls([envUrl("OCT_GRADCAM_BACKEND_URL"), predictBackendUrl])
+      : uniqueUrls([
+          envUrl("OCT_GRADCAM_BACKEND_URL"),
+          ...OCT_GRADCAM_FALLBACK_URLS,
+          predictBackendUrl
+        ]);
     const gradcam = await fetchOptionalGradcam({
       backendUrls: gradcamBackendUrls,
       file: uploaded,
