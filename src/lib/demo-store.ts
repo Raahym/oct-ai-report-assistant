@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { getReportTemplates, reportTemplates, safetyDisclaimer } from "./report-templates";
 import { supabase } from "./supabase";
+import { isOfflineMode } from "./config";
 import { isClinicalClass } from "./types";
 import type {
   AiResult,
@@ -927,17 +928,18 @@ export function useDemoStore() {
 
   useEffect(() => {
     let cancelled = false;
+    const offline = isOfflineMode();
+
+    if (offline || !supabase) {
+      const localData = readStore();
+      setData(localData);
+      writeStore(localData);
+      setMode("demo");
+      setReady(true);
+      return;
+    }
 
     async function init() {
-      if (!supabase) {
-        const localData = readStore();
-        setData(localData);
-        writeStore(localData);
-        setMode("demo");
-        setReady(true);
-        return;
-      }
-
       const { data: sessionData } = await supabase.auth.getSession();
       await syncServerSession(sessionData.session?.access_token);
 
@@ -964,6 +966,8 @@ export function useDemoStore() {
     }
 
     init();
+
+    if (offline) return;
 
     const subscription = supabase?.auth.onAuthStateChange((_event, session) => {
       const user = session?.user ?? null;

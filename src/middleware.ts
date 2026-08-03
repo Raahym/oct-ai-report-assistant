@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AFIO_SESSION_COOKIE, sessionCookieSecret, verifySessionCookieValue } from "@/lib/session-cookie";
+import { isOfflineMode } from "@/lib/config";
 
 const protectedPrefixes = [
   "/admin",
@@ -31,6 +32,10 @@ function isProtectedPath(pathname: string) {
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   if (!isProtectedPath(pathname)) return NextResponse.next();
+
+  if (isOfflineMode()) {
+    return NextResponse.next();
+  }
 
   const isSignedIn = await verifySessionCookieValue(
     request.cookies.get(AFIO_SESSION_COOKIE)?.value,

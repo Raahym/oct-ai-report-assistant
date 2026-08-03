@@ -8,6 +8,7 @@ import {
   validateGatewayUpload
 } from "@/lib/ai-gateway";
 import { createInMemoryRateLimiter, rateLimitKey } from "@/lib/rate-limit";
+import { isOfflineMode } from "@/lib/config";
 
 export const runtime = "nodejs";
 
@@ -17,8 +18,12 @@ const DR_GRADCAM_TIMEOUT_MS = 90_000;
 const DR_GRADCAM_FALLBACK_URLS = ["https://13.48.31.108.sslip.io"];
 
 function gradcamBackendUrls() {
+  const configured = configuredGatewayUrls(BACKEND_URL_ENV_NAMES);
+  if (isOfflineMode()) {
+    return Array.from(new Set(configured));
+  }
   return Array.from(new Set([
-    ...configuredGatewayUrls(BACKEND_URL_ENV_NAMES),
+    ...configured,
     ...DR_GRADCAM_FALLBACK_URLS
   ]));
 }
