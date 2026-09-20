@@ -14,12 +14,10 @@ export const runtime = "nodejs";
 const limiter = createInMemoryRateLimiter(10 * 60 * 1000, 20);
 const BACKEND_URL_ENV_NAMES = ["RETINA_DR_GRADCAM_BACKEND_URL"];
 const DR_GRADCAM_TIMEOUT_MS = 90_000;
-const DR_GRADCAM_FALLBACK_URLS = ["https://13.48.31.108.sslip.io"];
 
 function gradcamBackendUrls() {
   return Array.from(new Set([
-    ...configuredGatewayUrls(BACKEND_URL_ENV_NAMES),
-    ...DR_GRADCAM_FALLBACK_URLS
+    ...configuredGatewayUrls(BACKEND_URL_ENV_NAMES)
   ]));
 }
 
