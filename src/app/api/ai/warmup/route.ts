@@ -13,7 +13,6 @@ const FALLBACK_HEALTH_ENDPOINTS = [
   "https://afio-corneal-ulcer-backend.onrender.com/health",
   "https://afio-retina-dr-backend.onrender.com/health",
   "https://afio-retina-hr-backend.onrender.com/health",
-  "https://13.48.31.108.sslip.io/health",
   "https://16.16.104.107.sslip.io/health",
   "https://16.16.233.198.sslip.io/health"
 ];
